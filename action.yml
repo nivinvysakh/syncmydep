@@ -1,0 +1,70 @@
+name: 'SyncMyDep - Dependency Sync & PR'
+description: 'Checks package.json & lockfile issues, auto-fixes desync and vulnerabilities, and opens a Pull Request.'
+author: 'Nivinvysakh'
+branding:
+  icon: 'git-pull-request'
+  color: 'purple'
+
+inputs:
+  github-token:
+    description: 'GitHub token for creating PRs and pushing branches (GITHUB_TOKEN or PAT).'
+    required: false
+    default: ${{ github.token }}
+  package-manager:
+    description: 'Package manager to use: "auto", "npm", "yarn", or "pnpm".'
+    required: false
+    default: 'auto'
+  working-directory:
+    description: 'Working directory containing package.json and lockfile.'
+    required: false
+    default: '.'
+  sync-lockfile:
+    description: 'Whether to synchronize lockfile with package.json specifications.'
+    required: false
+    default: 'true'
+  fix-audit:
+    description: 'Whether to automatically fix security vulnerabilities with audit fix.'
+    required: false
+    default: 'true'
+  audit-level:
+    description: 'Minimum vulnerability level to fix/report: "low", "moderate", "high", "critical".'
+    required: false
+    default: 'moderate'
+  pr-branch:
+    description: 'Branch name to create or update for the Pull Request.'
+    required: false
+    default: 'syncmydep/dependency-fix'
+  pr-title:
+    description: 'Title for the generated Pull Request.'
+    required: false
+    default: 'chore(deps): synchronize package.json and lockfile issues'
+  commit-message:
+    description: 'Commit message for the dependency update.'
+    required: false
+    default: 'chore(deps): synchronize package.json and lockfile issues'
+  pr-labels:
+    description: 'Comma-separated labels to attach to the Pull Request.'
+    required: false
+    default: 'dependencies, automated-pr'
+  pr-assignees:
+    description: 'Comma-separated GitHub usernames to assign to the PR.'
+    required: false
+    default: ''
+  pr-reviewers:
+    description: 'Comma-separated GitHub usernames to request review from.'
+    required: false
+    default: ''
+
+outputs:
+  changes-detected:
+    description: 'Whether any dependency or lockfile changes were detected and resolved ("true" or "false").'
+  pull-request-number:
+    description: 'The number of the created or updated Pull Request.'
+  pull-request-url:
+    description: 'The URL of the created or updated Pull Request.'
+  modified-files:
+    description: 'Comma-separated list of modified files.'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

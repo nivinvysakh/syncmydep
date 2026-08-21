@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-build:
+    name: Test and Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run Jest tests
+        run: npm test
+
+      - name: Build action dist
+        run: npm run build
+
+      - name: Check for uncommitted dist changes
+        run: |
+          if [[ -n $(git status --porcelain dist/) ]]; then
+            echo "Error: dist/ is out of date. Please run 'npm run build' and commit changes."
+            git diff dist/
+            exit 1
+          fi
