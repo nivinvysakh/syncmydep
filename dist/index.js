@@ -30458,7 +30458,7 @@ function buildMarkdownSummary({
   md += `- [ ] Review any package version changes in \`package.json\` / lockfiles.\n`;
   md += `- [ ] Merge this PR to ensure your repository dependencies stay synchronized and secure.\n\n`;
 
-  md += `---\n*Generated automatically by [SyncMyDep GitHub Action](https://github.com).*`;
+  md += `---\n*Generated automatically by [SyncMyDep GitHub Action](https://github.com/nivinvysakh/syncmydep).*`;
 
   return md;
 }
