@@ -1,8 +1,8 @@
 # 🔄 SyncMyDep
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](file:///Users/nivin/Desktop/Dev/Syncmydep/LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/nivinvysakh/syncmydep/blob/main/LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
-[![Automated Dependency Sync](https://img.shields.io/badge/SyncMyDep-Action-purple.svg)](https://github.com)
+[![Automated Dependency Sync](https://img.shields.io/badge/SyncMyDep-Action-purple.svg)](https://github.com/nivinvysakh/syncmydep)
 
 > A JavaScript-powered GitHub Action that detects `package.json` and lockfile desynchronization or vulnerabilities, automatically resolves them, and creates a Pull Request.
 
@@ -55,7 +55,7 @@ jobs:
           node-version: 20
 
       - name: Run SyncMyDep
-        uses: ./ # Or your-username/syncmydep@v1
+        uses: nivinvysakh/syncmydep@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           package-manager: 'auto'
