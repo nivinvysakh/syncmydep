@@ -178,4 +178,4 @@ npm run build
 
 ## 📄 License
 
-[MIT]()
+[MIT](https://github.com/nivinvysakh/syncmydep/blob/main/LICENSE)
