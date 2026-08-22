@@ -99,10 +99,6 @@ permissions:
 jobs:
   sync-pr-comment:
     name: Sync Dependencies on PR Comment
-    if: >-
-      github.event.issue.pull_request != null &&
-      (github.event.comment.author_association == 'OWNER' || github.event.comment.user.login == github.repository_owner) &&
-      (contains(github.event.comment.body, 'syncdep') || contains(github.event.comment.body, '/syncdep'))
     runs-on: ubuntu-latest
 
     steps:
@@ -121,6 +117,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-trigger: 'syncdep'
+          require-owner: 'true'
           sync-lockfile: 'true'
           fix-audit: 'true'
 ```

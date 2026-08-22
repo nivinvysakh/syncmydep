@@ -32355,24 +32355,24 @@ async function run() {
                 core.info(`[SyncMyDep] Comment did not contain trigger word (${commentTrigger}). Skipping.`);
                 return;
             }
-            const requireOwner = core.getInput('require-owner') !== 'false';
-            const authorAssociation = (comment?.author_association || '').toUpperCase();
-            const commenter = comment?.user?.login || '';
-            const { owner, repo } = github.context.repo;
-            const isOwner = commenter.toLowerCase() === owner.toLowerCase() || authorAssociation === 'OWNER';
-            if (requireOwner && !isOwner) {
-                core.warning(`[SyncMyDep] User @${commenter} is not authorized. Only repository owners can trigger syncdep.`);
-                if (token && comment?.id) {
-                    const octokit = github.getOctokit(token);
-                    await addCommentReaction(octokit, owner, repo, comment.id, '-1');
-                }
-                return;
-            }
             if (!token) {
                 throw new Error('github-token is required to handle PR comment triggers.');
             }
             const octokit = github.getOctokit(token);
+            const { owner, repo } = github.context.repo;
             const prNumber = issue.number;
+            const commenter = comment?.user?.login || 'unknown';
+            const authorAssociation = (comment?.author_association || '').toUpperCase();
+            const requireOwner = core.getInput('require-owner') !== 'false';
+            const isOwner = commenter.toLowerCase() === owner.toLowerCase() || authorAssociation === 'OWNER';
+            if (requireOwner && !isOwner) {
+                core.warning(`[SyncMyDep] User @${commenter} is not authorized. Only repository owners can trigger syncdep.`);
+                if (comment?.id) {
+                    await addCommentReaction(octokit, owner, repo, comment.id, '-1');
+                }
+                await postIssueComment(octokit, owner, repo, prNumber, `⛔ **SyncMyDep**: Permission denied. Only the repository owner (@${owner}) is permitted to trigger dependency synchronization on this repository.`);
+                return;
+            }
             core.info(`[SyncMyDep] Authorized trigger by @${commenter} on PR #${prNumber}`);
             // Add acknowledgement reaction (eyes)
             if (comment?.id) {
