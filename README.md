@@ -69,6 +69,63 @@ jobs:
 
 ---
 
+## 💬 On-Demand PR Comment Trigger (`syncdep`)
+
+You can also trigger SyncMyDep on any open Pull Request simply by commenting **`syncdep`** or **`/syncdep`** on the PR!
+
+SyncMyDep will:
+1. React to your comment with 👀 to confirm it's processing.
+2. Checkout that PR's branch.
+3. Synchronize `package.json` with the lockfile and fix security vulnerabilities.
+4. Push the fixes directly to that PR branch and react with 🚀.
+5. Post a comment with the detailed diff and update summary.
+
+### Comment Trigger Workflow Setup
+
+Add `.github/workflows/syncmydep-comment.yml`:
+
+```yaml
+name: SyncMyDep on PR Comment
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync-pr-comment:
+    name: Sync Dependencies on PR Comment
+    if: >-
+      github.event.issue.pull_request != null &&
+      (contains(github.event.comment.body, 'syncdep') || contains(github.event.comment.body, '/syncdep'))
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run SyncMyDep
+        uses: nivinvysakh/syncmydep@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          comment-trigger: 'syncdep'
+          sync-lockfile: 'true'
+          fix-audit: 'true'
+```
+
+---
+
 ## ⚙️ Inputs Reference
 
 | Input | Description | Required | Default |
@@ -85,6 +142,7 @@ jobs:
 | `pr-labels` | Comma-separated labels to attach to the PR | No | `dependencies, automated-pr` |
 | `pr-assignees` | Comma-separated usernames to assign | No | `""` |
 | `pr-reviewers` | Comma-separated usernames to request review from | No | `""` |
+| `comment-trigger` | Keyword that triggers sync on a PR comment | No | `syncdep` |
 
 ---
 

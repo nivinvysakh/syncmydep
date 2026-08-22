@@ -18,6 +18,10 @@ import {
 import {
   configureGitUser,
   commitAndPushChanges,
+  checkoutBranch,
+  getPullRequestDetails,
+  addCommentReaction,
+  postIssueComment,
   createOrUpdatePullRequest
 } from './git-pr';
 
@@ -38,6 +42,7 @@ async function run(): Promise<void> {
     const labelsInput = core.getInput('pr-labels') || '';
     const assigneesInput = core.getInput('pr-assignees') || '';
     const reviewersInput = core.getInput('pr-reviewers') || '';
+    const commentTrigger = (core.getInput('comment-trigger') || 'syncdep').toLowerCase().trim();
 
     const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
@@ -46,6 +51,142 @@ async function run(): Promise<void> {
     const workspaceDir = path.resolve(process.cwd(), workingDirInput);
     core.info(`[SyncMyDep] Working directory: ${workspaceDir}`);
 
+    const eventName = github.context.eventName;
+    const isIssueComment = eventName === 'issue_comment';
+
+    if (isIssueComment) {
+      const issue = github.context.payload.issue;
+      const comment = github.context.payload.comment;
+
+      // Ensure this comment is on a Pull Request
+      if (!issue || !issue.pull_request) {
+        core.info('[SyncMyDep] Comment is on a regular issue, not a Pull Request. Skipping.');
+        return;
+      }
+
+      const commentBody = (comment?.body || '').toLowerCase().trim();
+      const triggerPatterns = [commentTrigger, `/${commentTrigger}`, `@${commentTrigger}`];
+      const isTriggered = triggerPatterns.some((pattern) => commentBody.includes(pattern));
+
+      if (!isTriggered) {
+        core.info(`[SyncMyDep] Comment did not contain trigger word (${commentTrigger}). Skipping.`);
+        return;
+      }
+
+      if (!token) {
+        throw new Error('github-token is required to handle PR comment triggers.');
+      }
+
+      const octokit = github.getOctokit(token);
+      const { owner, repo } = github.context.repo;
+      const prNumber = issue.number;
+
+      core.info(`[SyncMyDep] Triggered via comment on PR #${prNumber}`);
+
+      // Add acknowledgement reaction (eyes)
+      if (comment?.id) {
+        await addCommentReaction(octokit, owner, repo, comment.id, 'eyes');
+      }
+
+      // Fetch PR details to know head branch
+      const prDetails = await getPullRequestDetails(octokit, owner, repo, prNumber);
+      core.info(`[SyncMyDep] PR #${prNumber} head branch: ${prDetails.headBranch}`);
+
+      // Checkout PR branch
+      await configureGitUser(workspaceDir);
+      await checkoutBranch(workspaceDir, prDetails.headBranch);
+
+      if (!checkPackageJsonExists(workspaceDir)) {
+        throw new Error(`package.json was not found in ${workspaceDir} on branch ${prDetails.headBranch}`);
+      }
+
+      const pm = detectPackageManager(workspaceDir, pmInput);
+      core.info(`[SyncMyDep] Active package manager: ${pm}`);
+
+      let auditBefore: AuditInspectionResult | null = null;
+      let auditAfter: AuditInspectionResult | null = null;
+
+      if (fixAuditOption) {
+        auditBefore = await inspectAudit(workspaceDir, pm);
+      }
+
+      let syncedLockfile = false;
+      if (syncLockfileOption) {
+        const syncResult = await syncLockfile(workspaceDir, pm);
+        syncedLockfile = syncResult.success;
+      }
+
+      let fixedAudit = false;
+      if (fixAuditOption) {
+        const auditResult = await runAuditFix(workspaceDir, pm, auditLevel);
+        fixedAudit = auditResult.success;
+        auditAfter = await inspectAudit(workspaceDir, pm);
+      }
+
+      const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
+
+      if (!hasChanges) {
+        core.info('✅ [SyncMyDep] No dependency issues or lockfile changes needed for this PR.');
+        core.setOutput('changes-detected', 'false');
+        core.setOutput('modified-files', '');
+
+        if (comment?.id) {
+          await addCommentReaction(octokit, owner, repo, comment.id, 'hooray');
+        }
+
+        await postIssueComment(
+          octokit,
+          owner,
+          repo,
+          prNumber,
+          `✅ **SyncMyDep**: All dependencies and lockfiles on branch \`${prDetails.headBranch}\` are already synchronized and healthy! No changes needed.`
+        );
+
+        return;
+      }
+
+      core.info(`[SyncMyDep] Changes detected in files: ${changedFiles.join(', ')}`);
+      core.setOutput('changes-detected', 'true');
+      core.setOutput('modified-files', changedFiles.join(','));
+
+      const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
+      const prBody = buildMarkdownSummary({
+        pm,
+        changedFiles,
+        diffStat,
+        syncedLockfile,
+        fixedAudit,
+        auditBefore,
+        auditAfter
+      });
+
+      const committed = await commitAndPushChanges({
+        workspaceDir,
+        branch: prDetails.headBranch,
+        commitMessage: commitMessage || `chore(deps): synchronize package.json and lockfile`,
+        files: changedFiles
+      });
+
+      if (committed) {
+        if (comment?.id) {
+          await addCommentReaction(octokit, owner, repo, comment.id, 'rocket');
+        }
+
+        await postIssueComment(
+          octokit,
+          owner,
+          repo,
+          prNumber,
+          `🚀 **SyncMyDep**: Successfully synchronized dependencies and pushed updates directly to \`${prDetails.headBranch}\`!\n\n${prBody}`
+        );
+
+        core.info(`[SyncMyDep] Successfully pushed dependency fixes to branch ${prDetails.headBranch}`);
+      }
+
+      return;
+    }
+
+    // Standard run (push / schedule / workflow_dispatch)
     if (!checkPackageJsonExists(workspaceDir)) {
       throw new Error(`package.json was not found in ${workspaceDir}`);
     }

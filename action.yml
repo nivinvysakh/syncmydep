@@ -54,6 +54,10 @@ inputs:
     description: 'Comma-separated GitHub usernames to request review from.'
     required: false
     default: ''
+  comment-trigger:
+    description: 'Comment keyword that triggers dependency synchronization on a PR (e.g. "syncdep" or "/syncdep").'
+    required: false
+    default: 'syncdep'
 
 outputs:
   changes-detected:

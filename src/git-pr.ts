@@ -3,7 +3,10 @@ import * as core from '@actions/core';
 import {
   CommitAndPushParams,
   CreateOrUpdatePullRequestParams,
-  PullRequestResult
+  PullRequestResult,
+  PullRequestDetails,
+  CommentReaction,
+  OctokitClient
 } from './types';
 
 /**
@@ -13,6 +16,19 @@ export async function configureGitUser(workspaceDir: string): Promise<void> {
   const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
   await exec.exec('git', ['config', 'user.name', 'github-actions[bot]'], options);
   await exec.exec('git', ['config', 'user.email', 'github-actions[bot]@users.noreply.github.com'], options);
+}
+
+/**
+ * Checks out a specific branch locally and pulls latest if available.
+ */
+export async function checkoutBranch(workspaceDir: string, branch: string): Promise<void> {
+  const options = { cwd: workspaceDir, ignoreReturnCode: true };
+  core.info(`[SyncMyDep] Fetching and checking out branch ${branch}...`);
+  await exec.exec('git', ['fetch', 'origin', branch], options);
+  const checkoutCode = await exec.exec('git', ['checkout', branch], options);
+  if (checkoutCode !== 0) {
+    await exec.exec('git', ['checkout', '-B', branch, `origin/${branch}`], options);
+  }
 }
 
 /**
@@ -40,12 +56,87 @@ export async function commitAndPushChanges({
   }
 
   core.info(`[SyncMyDep] Pushing branch ${branch} to remote...`);
-  const pushCode = await exec.exec('git', ['push', 'origin', branch, '--force'], options);
+  const pushCode = await exec.exec('git', ['push', 'origin', branch], options);
   if (pushCode !== 0) {
-    throw new Error(`Failed to push branch ${branch} to origin.`);
+    core.info(`[SyncMyDep] Standard push failed, retrying with force...`);
+    const forcePushCode = await exec.exec('git', ['push', 'origin', branch, '--force'], options);
+    if (forcePushCode !== 0) {
+      throw new Error(`Failed to push branch ${branch} to origin.`);
+    }
   }
 
   return true;
+}
+
+/**
+ * Fetches pull request details from GitHub API.
+ */
+export async function getPullRequestDetails(
+  octokit: OctokitClient,
+  owner: string,
+  repo: string,
+  pullNumber: number
+): Promise<PullRequestDetails> {
+  const { data: pr } = await octokit.rest.pulls.get({
+    owner,
+    repo,
+    pull_number: pullNumber
+  });
+
+  return {
+    number: pr.number,
+    title: pr.title,
+    headBranch: pr.head.ref,
+    baseBranch: pr.base.ref,
+    headRepo: pr.head.repo ? pr.head.repo.full_name : `${owner}/${repo}`,
+    htmlUrl: pr.html_url
+  };
+}
+
+/**
+ * Adds an emoji reaction to a comment.
+ */
+export async function addCommentReaction(
+  octokit: OctokitClient,
+  owner: string,
+  repo: string,
+  commentId: number,
+  content: CommentReaction
+): Promise<void> {
+  try {
+    await octokit.rest.reactions.createForIssueComment({
+      owner,
+      repo,
+      comment_id: commentId,
+      content
+    });
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    core.warning(`Could not add reaction to comment #${commentId}: ${errMsg}`);
+  }
+}
+
+/**
+ * Posts a comment to a GitHub issue or PR.
+ */
+export async function postIssueComment(
+  octokit: OctokitClient,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  body: string
+): Promise<void> {
+  try {
+    await octokit.rest.issues.createComment({
+      owner,
+      repo,
+      issue_number: issueNumber,
+      body
+    });
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    core.warning(`Could not post comment to #${issueNumber}: ${errMsg}`);
+  }
 }
 
 /**
@@ -92,17 +183,13 @@ export async function createOrUpdatePullRequest({
       body
     });
 
-    try {
-      await octokit.rest.issues.createComment({
-        owner,
-        repo,
-        issue_number: prNumber,
-        body: `🔄 **SyncMyDep Update**: Refreshed dependency synchronization and pushed latest fixes.`
-      });
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      core.warning(`Could not post comment to PR #${prNumber}: ${errMsg}`);
-    }
+    await postIssueComment(
+      octokit,
+      owner,
+      repo,
+      prNumber,
+      `🔄 **SyncMyDep Update**: Refreshed dependency synchronization and pushed latest fixes.`
+    );
   } else {
     core.info(`[SyncMyDep] Creating new Pull Request...`);
     const { data: newPr } = await octokit.rest.pulls.create({

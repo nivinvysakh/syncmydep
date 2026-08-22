@@ -46,3 +46,12 @@ export interface PullRequestResult {
     url: string;
     isNew: boolean;
 }
+export interface PullRequestDetails {
+    number: number;
+    title: string;
+    headBranch: string;
+    baseBranch: string;
+    headRepo: string;
+    htmlUrl: string;
+}
+export type CommentReaction = '+1' | '-1' | 'laugh' | 'confused' | 'heart' | 'hooray' | 'rocket' | 'eyes';

@@ -30270,7 +30270,11 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.configureGitUser = configureGitUser;
+exports.checkoutBranch = checkoutBranch;
 exports.commitAndPushChanges = commitAndPushChanges;
+exports.getPullRequestDetails = getPullRequestDetails;
+exports.addCommentReaction = addCommentReaction;
+exports.postIssueComment = postIssueComment;
 exports.createOrUpdatePullRequest = createOrUpdatePullRequest;
 const exec = __importStar(__nccwpck_require__(5236));
 const core = __importStar(__nccwpck_require__(7484));
@@ -30281,6 +30285,18 @@ async function configureGitUser(workspaceDir) {
     const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
     await exec.exec('git', ['config', 'user.name', 'github-actions[bot]'], options);
     await exec.exec('git', ['config', 'user.email', 'github-actions[bot]@users.noreply.github.com'], options);
+}
+/**
+ * Checks out a specific branch locally and pulls latest if available.
+ */
+async function checkoutBranch(workspaceDir, branch) {
+    const options = { cwd: workspaceDir, ignoreReturnCode: true };
+    core.info(`[SyncMyDep] Fetching and checking out branch ${branch}...`);
+    await exec.exec('git', ['fetch', 'origin', branch], options);
+    const checkoutCode = await exec.exec('git', ['checkout', branch], options);
+    if (checkoutCode !== 0) {
+        await exec.exec('git', ['checkout', '-B', branch, `origin/${branch}`], options);
+    }
 }
 /**
  * Creates/checks out a branch, commits modified files, and pushes to origin.
@@ -30298,11 +30314,67 @@ async function commitAndPushChanges({ workspaceDir, branch, commitMessage, files
         return false;
     }
     core.info(`[SyncMyDep] Pushing branch ${branch} to remote...`);
-    const pushCode = await exec.exec('git', ['push', 'origin', branch, '--force'], options);
+    const pushCode = await exec.exec('git', ['push', 'origin', branch], options);
     if (pushCode !== 0) {
-        throw new Error(`Failed to push branch ${branch} to origin.`);
+        core.info(`[SyncMyDep] Standard push failed, retrying with force...`);
+        const forcePushCode = await exec.exec('git', ['push', 'origin', branch, '--force'], options);
+        if (forcePushCode !== 0) {
+            throw new Error(`Failed to push branch ${branch} to origin.`);
+        }
     }
     return true;
+}
+/**
+ * Fetches pull request details from GitHub API.
+ */
+async function getPullRequestDetails(octokit, owner, repo, pullNumber) {
+    const { data: pr } = await octokit.rest.pulls.get({
+        owner,
+        repo,
+        pull_number: pullNumber
+    });
+    return {
+        number: pr.number,
+        title: pr.title,
+        headBranch: pr.head.ref,
+        baseBranch: pr.base.ref,
+        headRepo: pr.head.repo ? pr.head.repo.full_name : `${owner}/${repo}`,
+        htmlUrl: pr.html_url
+    };
+}
+/**
+ * Adds an emoji reaction to a comment.
+ */
+async function addCommentReaction(octokit, owner, repo, commentId, content) {
+    try {
+        await octokit.rest.reactions.createForIssueComment({
+            owner,
+            repo,
+            comment_id: commentId,
+            content
+        });
+    }
+    catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        core.warning(`Could not add reaction to comment #${commentId}: ${errMsg}`);
+    }
+}
+/**
+ * Posts a comment to a GitHub issue or PR.
+ */
+async function postIssueComment(octokit, owner, repo, issueNumber, body) {
+    try {
+        await octokit.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: issueNumber,
+            body
+        });
+    }
+    catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        core.warning(`Could not post comment to #${issueNumber}: ${errMsg}`);
+    }
 }
 /**
  * Creates or updates a GitHub Pull Request using Octokit.
@@ -30332,18 +30404,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
             title,
             body
         });
-        try {
-            await octokit.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: prNumber,
-                body: `🔄 **SyncMyDep Update**: Refreshed dependency synchronization and pushed latest fixes.`
-            });
-        }
-        catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            core.warning(`Could not post comment to PR #${prNumber}: ${errMsg}`);
-        }
+        await postIssueComment(octokit, owner, repo, prNumber, `🔄 **SyncMyDep Update**: Refreshed dependency synchronization and pushed latest fixes.`);
     }
     else {
         core.info(`[SyncMyDep] Creating new Pull Request...`);
@@ -30475,11 +30536,107 @@ async function run() {
         const labelsInput = core.getInput('pr-labels') || '';
         const assigneesInput = core.getInput('pr-assignees') || '';
         const reviewersInput = core.getInput('pr-reviewers') || '';
+        const commentTrigger = (core.getInput('comment-trigger') || 'syncdep').toLowerCase().trim();
         const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
         const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
         const reviewers = reviewersInput ? reviewersInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
         const workspaceDir = path.resolve(process.cwd(), workingDirInput);
         core.info(`[SyncMyDep] Working directory: ${workspaceDir}`);
+        const eventName = github.context.eventName;
+        const isIssueComment = eventName === 'issue_comment';
+        if (isIssueComment) {
+            const issue = github.context.payload.issue;
+            const comment = github.context.payload.comment;
+            // Ensure this comment is on a Pull Request
+            if (!issue || !issue.pull_request) {
+                core.info('[SyncMyDep] Comment is on a regular issue, not a Pull Request. Skipping.');
+                return;
+            }
+            const commentBody = (comment?.body || '').toLowerCase().trim();
+            const triggerPatterns = [commentTrigger, `/${commentTrigger}`, `@${commentTrigger}`];
+            const isTriggered = triggerPatterns.some((pattern) => commentBody.includes(pattern));
+            if (!isTriggered) {
+                core.info(`[SyncMyDep] Comment did not contain trigger word (${commentTrigger}). Skipping.`);
+                return;
+            }
+            if (!token) {
+                throw new Error('github-token is required to handle PR comment triggers.');
+            }
+            const octokit = github.getOctokit(token);
+            const { owner, repo } = github.context.repo;
+            const prNumber = issue.number;
+            core.info(`[SyncMyDep] Triggered via comment on PR #${prNumber}`);
+            // Add acknowledgement reaction (eyes)
+            if (comment?.id) {
+                await (0, git_pr_1.addCommentReaction)(octokit, owner, repo, comment.id, 'eyes');
+            }
+            // Fetch PR details to know head branch
+            const prDetails = await (0, git_pr_1.getPullRequestDetails)(octokit, owner, repo, prNumber);
+            core.info(`[SyncMyDep] PR #${prNumber} head branch: ${prDetails.headBranch}`);
+            // Checkout PR branch
+            await (0, git_pr_1.configureGitUser)(workspaceDir);
+            await (0, git_pr_1.checkoutBranch)(workspaceDir, prDetails.headBranch);
+            if (!(0, detector_1.checkPackageJsonExists)(workspaceDir)) {
+                throw new Error(`package.json was not found in ${workspaceDir} on branch ${prDetails.headBranch}`);
+            }
+            const pm = (0, detector_1.detectPackageManager)(workspaceDir, pmInput);
+            core.info(`[SyncMyDep] Active package manager: ${pm}`);
+            let auditBefore = null;
+            let auditAfter = null;
+            if (fixAuditOption) {
+                auditBefore = await (0, detector_1.inspectAudit)(workspaceDir, pm);
+            }
+            let syncedLockfile = false;
+            if (syncLockfileOption) {
+                const syncResult = await (0, fixer_1.syncLockfile)(workspaceDir, pm);
+                syncedLockfile = syncResult.success;
+            }
+            let fixedAudit = false;
+            if (fixAuditOption) {
+                const auditResult = await (0, fixer_1.runAuditFix)(workspaceDir, pm, auditLevel);
+                fixedAudit = auditResult.success;
+                auditAfter = await (0, detector_1.inspectAudit)(workspaceDir, pm);
+            }
+            const { hasChanges, changedFiles } = await (0, fixer_1.getGitStatus)(workspaceDir);
+            if (!hasChanges) {
+                core.info('✅ [SyncMyDep] No dependency issues or lockfile changes needed for this PR.');
+                core.setOutput('changes-detected', 'false');
+                core.setOutput('modified-files', '');
+                if (comment?.id) {
+                    await (0, git_pr_1.addCommentReaction)(octokit, owner, repo, comment.id, 'hooray');
+                }
+                await (0, git_pr_1.postIssueComment)(octokit, owner, repo, prNumber, `✅ **SyncMyDep**: All dependencies and lockfiles on branch \`${prDetails.headBranch}\` are already synchronized and healthy! No changes needed.`);
+                return;
+            }
+            core.info(`[SyncMyDep] Changes detected in files: ${changedFiles.join(', ')}`);
+            core.setOutput('changes-detected', 'true');
+            core.setOutput('modified-files', changedFiles.join(','));
+            const diffStat = await (0, fixer_1.getGitDiffStat)(workspaceDir, changedFiles);
+            const prBody = (0, summary_1.buildMarkdownSummary)({
+                pm,
+                changedFiles,
+                diffStat,
+                syncedLockfile,
+                fixedAudit,
+                auditBefore,
+                auditAfter
+            });
+            const committed = await (0, git_pr_1.commitAndPushChanges)({
+                workspaceDir,
+                branch: prDetails.headBranch,
+                commitMessage: commitMessage || `chore(deps): synchronize package.json and lockfile`,
+                files: changedFiles
+            });
+            if (committed) {
+                if (comment?.id) {
+                    await (0, git_pr_1.addCommentReaction)(octokit, owner, repo, comment.id, 'rocket');
+                }
+                await (0, git_pr_1.postIssueComment)(octokit, owner, repo, prNumber, `🚀 **SyncMyDep**: Successfully synchronized dependencies and pushed updates directly to \`${prDetails.headBranch}\`!\n\n${prBody}`);
+                core.info(`[SyncMyDep] Successfully pushed dependency fixes to branch ${prDetails.headBranch}`);
+            }
+            return;
+        }
+        // Standard run (push / schedule / workflow_dispatch)
         if (!(0, detector_1.checkPackageJsonExists)(workspaceDir)) {
             throw new Error(`package.json was not found in ${workspaceDir}`);
         }

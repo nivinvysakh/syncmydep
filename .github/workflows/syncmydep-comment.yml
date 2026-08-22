@@ -1,0 +1,38 @@
+name: SyncMyDep on PR Comment
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync-pr-comment:
+    name: Sync Dependencies on PR Comment
+    # Only run if comment is on a Pull Request and contains syncdep
+    if: >-
+      github.event.issue.pull_request != null &&
+      (contains(github.event.comment.body, 'syncdep') || contains(github.event.comment.body, '/syncdep'))
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run SyncMyDep
+        uses: ./ # Or nivinvysakh/syncmydep@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          comment-trigger: 'syncdep'
+          sync-lockfile: 'true'
+          fix-audit: 'true'
