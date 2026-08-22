@@ -58,6 +58,10 @@ inputs:
     description: 'Comment keyword that triggers dependency synchronization on a PR (e.g. "syncdep" or "/syncdep").'
     required: false
     default: 'syncdep'
+  require-owner:
+    description: 'Whether only repository owners/maintainers are allowed to trigger dependency fixes via comment ("true" or "false").'
+    required: false
+    default: 'true'
 
 outputs:
   changes-detected:
