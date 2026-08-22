@@ -1,16 +1,9 @@
+import { SummaryOptions } from './types';
+
 /**
  * Builds a rich Markdown description for the Pull Request and GitHub Step Summary.
- * @param {object} params
- * @param {string} params.pm
- * @param {string[]} params.changedFiles
- * @param {string} params.diffStat
- * @param {boolean} params.syncedLockfile
- * @param {boolean} params.fixedAudit
- * @param {object} params.auditBefore
- * @param {object} params.auditAfter
- * @returns {string} Markdown content
  */
-function buildMarkdownSummary({
+export function buildMarkdownSummary({
   pm,
   changedFiles,
   diffStat,
@@ -18,7 +11,7 @@ function buildMarkdownSummary({
   fixedAudit,
   auditBefore,
   auditAfter
-}) {
+}: SummaryOptions): string {
   let md = `## 🤖 SyncMyDep: Automated Dependency Synchronization\n\n`;
   md += `SyncMyDep detected desynchronization or security vulnerabilities in your project's dependencies and generated this Pull Request.\n\n`;
 
@@ -63,7 +56,3 @@ function buildMarkdownSummary({
 
   return md;
 }
-
-module.exports = {
-  buildMarkdownSummary
-};

@@ -1,35 +1,14 @@
-module.exports = [
+const tseslint = require('typescript-eslint');
+
+module.exports = tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**']
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**', '*.js']
   },
+  ...tseslint.configs.recommended,
   {
-    files: ['src/**/*.js', 'tests/**/*.js'],
-    languageOptions: {
-      ecmaVersion: 'latest',
-      sourceType: 'commonjs',
-      globals: {
-        require: 'readonly',
-        module: 'readonly',
-        exports: 'readonly',
-        process: 'readonly',
-        __dirname: 'readonly',
-        __filename: 'readonly',
-        Buffer: 'readonly',
-        console: 'readonly',
-        describe: 'readonly',
-        test: 'readonly',
-        it: 'readonly',
-        expect: 'readonly',
-        beforeEach: 'readonly',
-        afterEach: 'readonly',
-        beforeAll: 'readonly',
-        afterAll: 'readonly',
-        jest: 'readonly'
-      }
-    },
+    files: ['src/**/*.ts', 'tests/**/*.ts'],
     rules: {
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-      'no-undef': 'error'
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }]
     }
   }
-];
+);

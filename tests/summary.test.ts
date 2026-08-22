@@ -1,4 +1,4 @@
-const { buildMarkdownSummary } = require('../src/summary');
+import { buildMarkdownSummary } from '../src/summary';
 
 describe('summary builder', () => {
   test('builds accurate markdown table and stats', () => {
@@ -8,8 +8,8 @@ describe('summary builder', () => {
       diffStat: 'package-lock.json | 10 +++++-----',
       syncedLockfile: true,
       fixedAudit: true,
-      auditBefore: { total: 2, summary: { high: 2 } },
-      auditAfter: { total: 0, summary: {} }
+      auditBefore: { total: 2, summary: { high: 2 }, raw: null },
+      auditAfter: { total: 0, summary: {}, raw: null }
     });
 
     expect(summary).toContain('SyncMyDep: Automated Dependency Synchronization');

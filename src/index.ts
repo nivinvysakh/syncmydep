@@ -1,29 +1,30 @@
-const path = require('path');
-const core = require('@actions/core');
-const github = require('@actions/github');
+import * as path from 'path';
+import * as core from '@actions/core';
+import * as github from '@actions/github';
 
-const {
+import {
   detectPackageManager,
   checkPackageJsonExists,
   inspectAudit
-} = require('./detector');
+} from './detector';
 
-const {
+import {
   syncLockfile,
   runAuditFix,
   getGitStatus,
   getGitDiffStat
-} = require('./fixer');
+} from './fixer';
 
-const {
+import {
   configureGitUser,
   commitAndPushChanges,
   createOrUpdatePullRequest
-} = require('./git-pr');
+} from './git-pr';
 
-const { buildMarkdownSummary } = require('./summary');
+import { buildMarkdownSummary } from './summary';
+import { AuditInspectionResult } from './types';
 
-async function run() {
+async function run(): Promise<void> {
   try {
     const token = core.getInput('github-token') || process.env.GITHUB_TOKEN;
     const pmInput = core.getInput('package-manager') || 'auto';
@@ -52,8 +53,8 @@ async function run() {
     const pm = detectPackageManager(workspaceDir, pmInput);
     core.info(`[SyncMyDep] Active package manager: ${pm}`);
 
-    let auditBefore = null;
-    let auditAfter = null;
+    let auditBefore: AuditInspectionResult | null = null;
+    let auditAfter: AuditInspectionResult | null = null;
 
     if (fixAuditOption) {
       auditBefore = await inspectAudit(workspaceDir, pm);
@@ -159,8 +160,9 @@ async function run() {
       .addRaw(`🚀 **Pull Request #${prResult.number}**: [${prTitle}](${prResult.url})\n\n`)
       .addRaw(prBody)
       .write();
-  } catch (error) {
-    core.setFailed(`[SyncMyDep Action Failed]: ${error.message}`);
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    core.setFailed(`[SyncMyDep Action Failed]: ${errMsg}`);
   }
 }
 

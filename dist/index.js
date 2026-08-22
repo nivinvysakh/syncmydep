@@ -29922,550 +29922,719 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
-/***/ 6763:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+/***/ 9157:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
-const fs = __nccwpck_require__(9896);
-const path = __nccwpck_require__(6928);
-const exec = __nccwpck_require__(5236);
+"use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.detectPackageManager = detectPackageManager;
+exports.checkPackageJsonExists = checkPackageJsonExists;
+exports.getLockfileName = getLockfileName;
+exports.inspectAudit = inspectAudit;
+const fs = __importStar(__nccwpck_require__(9896));
+const path = __importStar(__nccwpck_require__(6928));
+const exec = __importStar(__nccwpck_require__(5236));
 /**
  * Detects the appropriate package manager for the workspace.
- * @param {string} workspaceDir
- * @param {string} specifiedPm
- * @returns {string} 'npm' | 'yarn' | 'pnpm'
  */
 function detectPackageManager(workspaceDir, specifiedPm = 'auto') {
-  if (specifiedPm && specifiedPm !== 'auto') {
-    const valid = ['npm', 'yarn', 'pnpm'];
-    if (valid.includes(specifiedPm.toLowerCase())) {
-      return specifiedPm.toLowerCase();
+    if (specifiedPm && specifiedPm !== 'auto') {
+        const lower = specifiedPm.toLowerCase();
+        if (lower === 'npm' || lower === 'yarn' || lower === 'pnpm') {
+            return lower;
+        }
     }
-  }
-
-  const pnpmLock = path.join(workspaceDir, 'pnpm-lock.yaml');
-  if (fs.existsSync(pnpmLock)) return 'pnpm';
-
-  const yarnLock = path.join(workspaceDir, 'yarn.lock');
-  if (fs.existsSync(yarnLock)) return 'yarn';
-
-  const npmLock = path.join(workspaceDir, 'package-lock.json');
-  if (fs.existsSync(npmLock)) return 'npm';
-
-  return 'npm';
+    const pnpmLock = path.join(workspaceDir, 'pnpm-lock.yaml');
+    if (fs.existsSync(pnpmLock))
+        return 'pnpm';
+    const yarnLock = path.join(workspaceDir, 'yarn.lock');
+    if (fs.existsSync(yarnLock))
+        return 'yarn';
+    const npmLock = path.join(workspaceDir, 'package-lock.json');
+    if (fs.existsSync(npmLock))
+        return 'npm';
+    return 'npm';
 }
-
 /**
  * Checks if package.json exists in the specified directory.
- * @param {string} workspaceDir
- * @returns {boolean}
  */
 function checkPackageJsonExists(workspaceDir) {
-  return fs.existsSync(path.join(workspaceDir, 'package.json'));
+    return fs.existsSync(path.join(workspaceDir, 'package.json'));
 }
-
 /**
  * Gets the lockfile name associated with a package manager.
- * @param {string} pm
- * @returns {string}
  */
 function getLockfileName(pm) {
-  switch (pm) {
-    case 'pnpm':
-      return 'pnpm-lock.yaml';
-    case 'yarn':
-      return 'yarn.lock';
-    case 'npm':
-    default:
-      return 'package-lock.json';
-  }
+    switch (pm) {
+        case 'pnpm':
+            return 'pnpm-lock.yaml';
+        case 'yarn':
+            return 'yarn.lock';
+        case 'npm':
+        default:
+            return 'package-lock.json';
+    }
 }
-
 /**
  * Runs a quick audit query to inspect vulnerabilities before/after fixing.
- * @param {string} workspaceDir
- * @param {string} pm
- * @returns {Promise<{total: number, vulnerabilities: object}>}
  */
 async function inspectAudit(workspaceDir, pm) {
-  let stdout = '';
-
-  const options = {
-    cwd: workspaceDir,
-    ignoreReturnCode: true,
-    silent: true,
-    listeners: {
-      stdout: (data) => {
-        stdout += data.toString();
-      }
+    let stdout = '';
+    const options = {
+        cwd: workspaceDir,
+        ignoreReturnCode: true,
+        silent: true,
+        listeners: {
+            stdout: (data) => {
+                stdout += data.toString();
+            }
+        }
+    };
+    try {
+        if (pm === 'npm') {
+            await exec.exec('npm', ['audit', '--json'], options);
+            if (stdout) {
+                const parsed = JSON.parse(stdout);
+                const metadata = parsed.metadata || {};
+                const vulnCounts = metadata.vulnerabilities || parsed.vulnerabilities || {};
+                const total = typeof metadata.vulnerabilities === 'object'
+                    ? Object.values(metadata.vulnerabilities).reduce((a, b) => a + b, 0)
+                    : (parsed.auditReportVersion ? Object.keys(parsed.vulnerabilities || {}).length : 0);
+                return {
+                    total: total || 0,
+                    summary: vulnCounts,
+                    raw: parsed
+                };
+            }
+        }
     }
-  };
-
-  try {
-    if (pm === 'npm') {
-      await exec.exec('npm', ['audit', '--json'], options);
-      if (stdout) {
-        const parsed = JSON.parse(stdout);
-        const metadata = parsed.metadata || {};
-        const vulnCounts = metadata.vulnerabilities || parsed.vulnerabilities || {};
-        const total = typeof metadata.vulnerabilities === 'object'
-          ? Object.values(metadata.vulnerabilities).reduce((a, b) => a + b, 0)
-          : (parsed.auditReportVersion ? Object.keys(parsed.vulnerabilities || {}).length : 0);
-
-        return {
-          total: total || 0,
-          summary: vulnCounts,
-          raw: parsed
-        };
-      }
+    catch {
+        // If parsing fails, return empty
     }
-  } catch {
-    // If parsing fails, return empty
-  }
-
-  return { total: 0, summary: {}, raw: null };
+    return { total: 0, summary: {}, raw: null };
 }
-
-module.exports = {
-  detectPackageManager,
-  checkPackageJsonExists,
-  getLockfileName,
-  inspectAudit
-};
 
 
 /***/ }),
 
-/***/ 7721:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+/***/ 1343:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
-const exec = __nccwpck_require__(5236);
-const core = __nccwpck_require__(7484);
+"use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.syncLockfile = syncLockfile;
+exports.runAuditFix = runAuditFix;
+exports.getGitStatus = getGitStatus;
+exports.getGitDiffStat = getGitDiffStat;
+const exec = __importStar(__nccwpck_require__(5236));
+const core = __importStar(__nccwpck_require__(7484));
 /**
  * Synchronizes the lockfile with package.json specifications.
- * @param {string} workspaceDir
- * @param {string} pm
- * @returns {Promise<{success: boolean, output: string}>}
  */
 async function syncLockfile(workspaceDir, pm) {
-  core.info(`[SyncMyDep] Synchronizing lockfile using ${pm}...`);
-  let output = '';
-  let errorOutput = '';
-
-  const options = {
-    cwd: workspaceDir,
-    ignoreReturnCode: true,
-    listeners: {
-      stdout: (data) => {
-        output += data.toString();
-      },
-      stderr: (data) => {
-        errorOutput += data.toString();
-      }
+    core.info(`[SyncMyDep] Synchronizing lockfile using ${pm}...`);
+    let output = '';
+    let errorOutput = '';
+    const options = {
+        cwd: workspaceDir,
+        ignoreReturnCode: true,
+        listeners: {
+            stdout: (data) => {
+                output += data.toString();
+            },
+            stderr: (data) => {
+                errorOutput += data.toString();
+            }
+        }
+    };
+    let exitCode = 0;
+    if (pm === 'npm') {
+        exitCode = await exec.exec('npm', ['install', '--package-lock-only', '--no-audit', '--no-fund'], options);
     }
-  };
-
-  let exitCode = 0;
-  if (pm === 'npm') {
-    exitCode = await exec.exec('npm', ['install', '--package-lock-only', '--no-audit', '--no-fund'], options);
-  } else if (pm === 'yarn') {
-    exitCode = await exec.exec('yarn', ['install', '--mode', 'update-lockfile'], options);
-    if (exitCode !== 0) {
-      exitCode = await exec.exec('yarn', ['install'], options);
+    else if (pm === 'yarn') {
+        exitCode = await exec.exec('yarn', ['install', '--mode', 'update-lockfile'], options);
+        if (exitCode !== 0) {
+            exitCode = await exec.exec('yarn', ['install'], options);
+        }
     }
-  } else if (pm === 'pnpm') {
-    exitCode = await exec.exec('pnpm', ['install', '--lockfile-only'], options);
-  }
-
-  return {
-    success: exitCode === 0,
-    output: output + errorOutput
-  };
+    else if (pm === 'pnpm') {
+        exitCode = await exec.exec('pnpm', ['install', '--lockfile-only'], options);
+    }
+    return {
+        success: exitCode === 0,
+        output: output + errorOutput
+    };
 }
-
 /**
  * Runs security audit fix to update vulnerable packages.
- * @param {string} workspaceDir
- * @param {string} pm
- * @param {string} auditLevel
- * @returns {Promise<{success: boolean, output: string}>}
  */
 async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
-  core.info(`[SyncMyDep] Running security audit fix using ${pm} (level: ${auditLevel})...`);
-  let output = '';
-  let errorOutput = '';
-
-  const options = {
-    cwd: workspaceDir,
-    ignoreReturnCode: true,
-    listeners: {
-      stdout: (data) => {
-        output += data.toString();
-      },
-      stderr: (data) => {
-        errorOutput += data.toString();
-      }
+    core.info(`[SyncMyDep] Running security audit fix using ${pm} (level: ${auditLevel})...`);
+    let output = '';
+    let errorOutput = '';
+    const options = {
+        cwd: workspaceDir,
+        ignoreReturnCode: true,
+        listeners: {
+            stdout: (data) => {
+                output += data.toString();
+            },
+            stderr: (data) => {
+                errorOutput += data.toString();
+            }
+        }
+    };
+    let exitCode = 0;
+    if (pm === 'npm') {
+        exitCode = await exec.exec('npm', ['audit', 'fix', `--audit-level=${auditLevel}`], options);
     }
-  };
-
-  let exitCode = 0;
-  if (pm === 'npm') {
-    exitCode = await exec.exec('npm', ['audit', 'fix', `--audit-level=${auditLevel}`], options);
-  } else if (pm === 'pnpm') {
-    exitCode = await exec.exec('pnpm', ['audit', '--fix'], options);
-  } else if (pm === 'yarn') {
-    core.info('[SyncMyDep] yarn audit does not support native auto-fix; lockfile sync was applied.');
-  }
-
-  return {
-    success: exitCode === 0 || exitCode === 1, // npm audit fix may return 1 if unfixable vulnerabilities remain
-    output: output + errorOutput
-  };
+    else if (pm === 'pnpm') {
+        exitCode = await exec.exec('pnpm', ['audit', '--fix'], options);
+    }
+    else if (pm === 'yarn') {
+        core.info('[SyncMyDep] yarn audit does not support native auto-fix; lockfile sync was applied.');
+    }
+    return {
+        success: exitCode === 0 || exitCode === 1, // npm audit fix may return 1 if unfixable vulnerabilities remain
+        output: output + errorOutput
+    };
 }
-
 /**
  * Checks git status for any modified or untracked dependency files.
- * @param {string} workspaceDir
- * @returns {Promise<{hasChanges: boolean, changedFiles: string[]}>}
  */
 async function getGitStatus(workspaceDir) {
-  let statusOutput = '';
-
-  const options = {
-    cwd: workspaceDir,
-    ignoreReturnCode: true,
-    silent: true,
-    listeners: {
-      stdout: (data) => {
-        statusOutput += data.toString();
-      }
+    let statusOutput = '';
+    const options = {
+        cwd: workspaceDir,
+        ignoreReturnCode: true,
+        silent: true,
+        listeners: {
+            stdout: (data) => {
+                statusOutput += data.toString();
+            }
+        }
+    };
+    await exec.exec('git', ['status', '--porcelain'], options);
+    const changedFiles = [];
+    const lines = statusOutput.split(/\r?\n/);
+    for (const line of lines) {
+        if (!line || line.length < 4)
+            continue;
+        const match = line.match(/^.{2}\s+(.+)$/);
+        if (!match)
+            continue;
+        const filePath = match[1].trim().replace(/^"|"$/g, '');
+        if (filePath.endsWith('package.json') ||
+            filePath.endsWith('package-lock.json') ||
+            filePath.endsWith('yarn.lock') ||
+            filePath.endsWith('pnpm-lock.yaml')) {
+            changedFiles.push(filePath);
+        }
     }
-  };
-
-  await exec.exec('git', ['status', '--porcelain'], options);
-
-  const changedFiles = [];
-  const lines = statusOutput.split(/\r?\n/);
-
-  for (const line of lines) {
-    if (!line || line.length < 4) continue;
-    const match = line.match(/^.{2}\s+(.+)$/);
-    if (!match) continue;
-    const filePath = match[1].trim().replace(/^"|"$/g, '');
-    if (
-      filePath.endsWith('package.json') ||
-      filePath.endsWith('package-lock.json') ||
-      filePath.endsWith('yarn.lock') ||
-      filePath.endsWith('pnpm-lock.yaml')
-    ) {
-      changedFiles.push(filePath);
-    }
-  }
-
-  return {
-    hasChanges: changedFiles.length > 0,
-    changedFiles
-  };
+    return {
+        hasChanges: changedFiles.length > 0,
+        changedFiles
+    };
 }
-
 /**
  * Gets git diff summary for the changed dependency files.
- * @param {string} workspaceDir
- * @param {string[]} files
- * @returns {Promise<string>}
  */
 async function getGitDiffStat(workspaceDir, files = []) {
-  let diffStat = '';
-
-  const options = {
-    cwd: workspaceDir,
-    ignoreReturnCode: true,
-    silent: true,
-    listeners: {
-      stdout: (data) => {
-        diffStat += data.toString();
-      }
+    let diffStat = '';
+    const options = {
+        cwd: workspaceDir,
+        ignoreReturnCode: true,
+        silent: true,
+        listeners: {
+            stdout: (data) => {
+                diffStat += data.toString();
+            }
+        }
+    };
+    const args = ['diff', '--stat'];
+    if (files.length > 0) {
+        args.push('--', ...files);
     }
-  };
-
-  const args = ['diff', '--stat'];
-  if (files.length > 0) {
-    args.push('--', ...files);
-  }
-
-  await exec.exec('git', args, options);
-  return diffStat.trim();
+    await exec.exec('git', args, options);
+    return diffStat.trim();
 }
-
-module.exports = {
-  syncLockfile,
-  runAuditFix,
-  getGitStatus,
-  getGitDiffStat
-};
 
 
 /***/ }),
 
-/***/ 7492:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+/***/ 1542:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
-const exec = __nccwpck_require__(5236);
-const core = __nccwpck_require__(7484);
+"use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.configureGitUser = configureGitUser;
+exports.commitAndPushChanges = commitAndPushChanges;
+exports.createOrUpdatePullRequest = createOrUpdatePullRequest;
+const exec = __importStar(__nccwpck_require__(5236));
+const core = __importStar(__nccwpck_require__(7484));
 /**
  * Sets up git bot credentials.
- * @param {string} workspaceDir
  */
 async function configureGitUser(workspaceDir) {
-  const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
-  await exec.exec('git', ['config', 'user.name', 'github-actions[bot]'], options);
-  await exec.exec('git', ['config', 'user.email', 'github-actions[bot]@users.noreply.github.com'], options);
+    const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
+    await exec.exec('git', ['config', 'user.name', 'github-actions[bot]'], options);
+    await exec.exec('git', ['config', 'user.email', 'github-actions[bot]@users.noreply.github.com'], options);
 }
-
 /**
  * Creates/checks out a branch, commits modified files, and pushes to origin.
- * @param {object} params
- * @param {string} params.workspaceDir
- * @param {string} params.branch
- * @param {string} params.commitMessage
- * @param {string[]} params.files
  */
 async function commitAndPushChanges({ workspaceDir, branch, commitMessage, files }) {
-  const options = { cwd: workspaceDir, ignoreReturnCode: true };
-
-  core.info(`[SyncMyDep] Checking out branch: ${branch}...`);
-  await exec.exec('git', ['checkout', '-B', branch], options);
-
-  core.info(`[SyncMyDep] Staging changed files: ${files.join(', ')}...`);
-  await exec.exec('git', ['add', ...files], options);
-
-  core.info(`[SyncMyDep] Committing changes...`);
-  const commitCode = await exec.exec('git', ['commit', '-m', commitMessage], options);
-  if (commitCode !== 0) {
-    core.info('[SyncMyDep] No staged changes to commit or commit failed.');
-    return false;
-  }
-
-  core.info(`[SyncMyDep] Pushing branch ${branch} to remote...`);
-  const pushCode = await exec.exec('git', ['push', 'origin', branch, '--force'], options);
-  if (pushCode !== 0) {
-    throw new Error(`Failed to push branch ${branch} to origin.`);
-  }
-
-  return true;
+    const options = { cwd: workspaceDir, ignoreReturnCode: true };
+    core.info(`[SyncMyDep] Checking out branch: ${branch}...`);
+    await exec.exec('git', ['checkout', '-B', branch], options);
+    core.info(`[SyncMyDep] Staging changed files: ${files.join(', ')}...`);
+    await exec.exec('git', ['add', ...files], options);
+    core.info(`[SyncMyDep] Committing changes...`);
+    const commitCode = await exec.exec('git', ['commit', '-m', commitMessage], options);
+    if (commitCode !== 0) {
+        core.info('[SyncMyDep] No staged changes to commit or commit failed.');
+        return false;
+    }
+    core.info(`[SyncMyDep] Pushing branch ${branch} to remote...`);
+    const pushCode = await exec.exec('git', ['push', 'origin', branch, '--force'], options);
+    if (pushCode !== 0) {
+        throw new Error(`Failed to push branch ${branch} to origin.`);
+    }
+    return true;
 }
-
 /**
  * Creates or updates a GitHub Pull Request using Octokit.
- * @param {object} params
- * @param {object} params.octokit
- * @param {string} params.owner
- * @param {string} params.repo
- * @param {string} params.baseBranch
- * @param {string} params.headBranch
- * @param {string} params.title
- * @param {string} params.body
- * @param {string[]} [params.labels]
- * @param {string[]} [params.assignees]
- * @param {string[]} [params.reviewers]
- * @returns {Promise<{number: number, url: string, isNew: boolean}>}
  */
-async function createOrUpdatePullRequest({
-  octokit,
-  owner,
-  repo,
-  baseBranch,
-  headBranch,
-  title,
-  body,
-  labels = [],
-  assignees = [],
-  reviewers = []
-}) {
-  core.info(`[SyncMyDep] Checking for existing Pull Request for branch ${headBranch}...`);
-
-  // Query existing PRs
-  const { data: pullRequests } = await octokit.rest.pulls.list({
-    owner,
-    repo,
-    state: 'open',
-    head: `${owner}:${headBranch}`,
-    base: baseBranch
-  });
-
-  let pr;
-  let isNew = false;
-
-  if (pullRequests && pullRequests.length > 0) {
-    pr = pullRequests[0];
-    core.info(`[SyncMyDep] Found existing Pull Request #${pr.number}. Updating...`);
-
-    await octokit.rest.pulls.update({
-      owner,
-      repo,
-      pull_number: pr.number,
-      title,
-      body
+async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, headBranch, title, body, labels = [], assignees = [], reviewers = [] }) {
+    core.info(`[SyncMyDep] Checking for existing Pull Request for branch ${headBranch}...`);
+    // Query existing PRs
+    const { data: pullRequests } = await octokit.rest.pulls.list({
+        owner,
+        repo,
+        state: 'open',
+        head: `${owner}:${headBranch}`,
+        base: baseBranch
     });
-
-    try {
-      await octokit.rest.issues.createComment({
-        owner,
-        repo,
-        issue_number: pr.number,
-        body: `🔄 **SyncMyDep Update**: Refreshed dependency synchronization and pushed latest fixes.`
-      });
-    } catch (err) {
-      core.warning(`Could not post comment to PR #${pr.number}: ${err.message}`);
+    let prNumber;
+    let prUrl;
+    let isNew = false;
+    if (pullRequests && pullRequests.length > 0) {
+        const existingPr = pullRequests[0];
+        prNumber = existingPr.number;
+        prUrl = existingPr.html_url;
+        core.info(`[SyncMyDep] Found existing Pull Request #${prNumber}. Updating...`);
+        await octokit.rest.pulls.update({
+            owner,
+            repo,
+            pull_number: prNumber,
+            title,
+            body
+        });
+        try {
+            await octokit.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: `🔄 **SyncMyDep Update**: Refreshed dependency synchronization and pushed latest fixes.`
+            });
+        }
+        catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            core.warning(`Could not post comment to PR #${prNumber}: ${errMsg}`);
+        }
     }
-  } else {
-    core.info(`[SyncMyDep] Creating new Pull Request...`);
-    const { data: newPr } = await octokit.rest.pulls.create({
-      owner,
-      repo,
-      title,
-      body,
-      head: headBranch,
-      base: baseBranch
-    });
-
-    pr = newPr;
-    isNew = true;
-    core.info(`[SyncMyDep] Successfully created Pull Request #${pr.number}: ${pr.html_url}`);
-  }
-
-  // Apply labels
-  if (labels && labels.length > 0) {
-    try {
-      await octokit.rest.issues.addLabels({
-        owner,
-        repo,
-        issue_number: pr.number,
-        labels
-      });
-    } catch (err) {
-      core.warning(`Could not apply labels to PR #${pr.number}: ${err.message}`);
+    else {
+        core.info(`[SyncMyDep] Creating new Pull Request...`);
+        const { data: newPr } = await octokit.rest.pulls.create({
+            owner,
+            repo,
+            title,
+            body,
+            head: headBranch,
+            base: baseBranch
+        });
+        prNumber = newPr.number;
+        prUrl = newPr.html_url;
+        isNew = true;
+        core.info(`[SyncMyDep] Successfully created Pull Request #${prNumber}: ${prUrl}`);
     }
-  }
-
-  // Apply assignees
-  if (assignees && assignees.length > 0) {
-    try {
-      await octokit.rest.issues.addAssignees({
-        owner,
-        repo,
-        issue_number: pr.number,
-        assignees
-      });
-    } catch (err) {
-      core.warning(`Could not assign users to PR #${pr.number}: ${err.message}`);
+    // Apply labels
+    if (labels && labels.length > 0) {
+        try {
+            await octokit.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: prNumber,
+                labels
+            });
+        }
+        catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            core.warning(`Could not apply labels to PR #${prNumber}: ${errMsg}`);
+        }
     }
-  }
-
-  // Request reviewers
-  if (reviewers && reviewers.length > 0) {
-    try {
-      await octokit.rest.pulls.requestReviewers({
-        owner,
-        repo,
-        pull_number: pr.number,
-        reviewers
-      });
-    } catch (err) {
-      core.warning(`Could not request reviewers for PR #${pr.number}: ${err.message}`);
+    // Apply assignees
+    if (assignees && assignees.length > 0) {
+        try {
+            await octokit.rest.issues.addAssignees({
+                owner,
+                repo,
+                issue_number: prNumber,
+                assignees
+            });
+        }
+        catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            core.warning(`Could not assign users to PR #${prNumber}: ${errMsg}`);
+        }
     }
-  }
-
-  return {
-    number: pr.number,
-    url: pr.html_url,
-    isNew
-  };
+    // Request reviewers
+    if (reviewers && reviewers.length > 0) {
+        try {
+            await octokit.rest.pulls.requestReviewers({
+                owner,
+                repo,
+                pull_number: prNumber,
+                reviewers
+            });
+        }
+        catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            core.warning(`Could not request reviewers for PR #${prNumber}: ${errMsg}`);
+        }
+    }
+    return {
+        number: prNumber,
+        url: prUrl,
+        isNew
+    };
 }
-
-module.exports = {
-  configureGitUser,
-  commitAndPushChanges,
-  createOrUpdatePullRequest
-};
 
 
 /***/ }),
 
-/***/ 9449:
-/***/ ((module) => {
+/***/ 9407:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const path = __importStar(__nccwpck_require__(6928));
+const core = __importStar(__nccwpck_require__(7484));
+const github = __importStar(__nccwpck_require__(3228));
+const detector_1 = __nccwpck_require__(9157);
+const fixer_1 = __nccwpck_require__(1343);
+const git_pr_1 = __nccwpck_require__(1542);
+const summary_1 = __nccwpck_require__(8855);
+async function run() {
+    try {
+        const token = core.getInput('github-token') || process.env.GITHUB_TOKEN;
+        const pmInput = core.getInput('package-manager') || 'auto';
+        const workingDirInput = core.getInput('working-directory') || '.';
+        const syncLockfileOption = core.getBooleanInput('sync-lockfile');
+        const fixAuditOption = core.getBooleanInput('fix-audit');
+        const auditLevel = core.getInput('audit-level') || 'moderate';
+        const branchName = core.getInput('pr-branch') || 'syncmydep/dependency-fix';
+        const prTitle = core.getInput('pr-title') || 'chore(deps): synchronize package.json and lockfile issues';
+        const commitMessage = core.getInput('commit-message') || 'chore(deps): synchronize package.json and lockfile issues';
+        const labelsInput = core.getInput('pr-labels') || '';
+        const assigneesInput = core.getInput('pr-assignees') || '';
+        const reviewersInput = core.getInput('pr-reviewers') || '';
+        const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
+        const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
+        const reviewers = reviewersInput ? reviewersInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
+        const workspaceDir = path.resolve(process.cwd(), workingDirInput);
+        core.info(`[SyncMyDep] Working directory: ${workspaceDir}`);
+        if (!(0, detector_1.checkPackageJsonExists)(workspaceDir)) {
+            throw new Error(`package.json was not found in ${workspaceDir}`);
+        }
+        const pm = (0, detector_1.detectPackageManager)(workspaceDir, pmInput);
+        core.info(`[SyncMyDep] Active package manager: ${pm}`);
+        let auditBefore = null;
+        let auditAfter = null;
+        if (fixAuditOption) {
+            auditBefore = await (0, detector_1.inspectAudit)(workspaceDir, pm);
+            core.info(`[SyncMyDep] Initial audit scan found ${auditBefore.total} vulnerabilities.`);
+        }
+        let syncedLockfile = false;
+        if (syncLockfileOption) {
+            const syncResult = await (0, fixer_1.syncLockfile)(workspaceDir, pm);
+            syncedLockfile = syncResult.success;
+        }
+        let fixedAudit = false;
+        if (fixAuditOption) {
+            const auditResult = await (0, fixer_1.runAuditFix)(workspaceDir, pm, auditLevel);
+            fixedAudit = auditResult.success;
+            auditAfter = await (0, detector_1.inspectAudit)(workspaceDir, pm);
+        }
+        const { hasChanges, changedFiles } = await (0, fixer_1.getGitStatus)(workspaceDir);
+        if (!hasChanges) {
+            core.info('✅ [SyncMyDep] No dependency issues or lockfile desync detected. Everything is up-to-date!');
+            core.setOutput('changes-detected', 'false');
+            core.setOutput('modified-files', '');
+            await core.summary
+                .addHeading('SyncMyDep: Dependency Check Result')
+                .addRaw('✅ **All dependencies and lockfiles are synchronized and healthy.** No Pull Request is needed.')
+                .write();
+            return;
+        }
+        core.info(`[SyncMyDep] Changes detected in files: ${changedFiles.join(', ')}`);
+        core.setOutput('changes-detected', 'true');
+        core.setOutput('modified-files', changedFiles.join(','));
+        const diffStat = await (0, fixer_1.getGitDiffStat)(workspaceDir, changedFiles);
+        const prBody = (0, summary_1.buildMarkdownSummary)({
+            pm,
+            changedFiles,
+            diffStat,
+            syncedLockfile,
+            fixedAudit,
+            auditBefore,
+            auditAfter
+        });
+        if (!token) {
+            core.warning('[SyncMyDep] No github-token provided. Cannot push branch or create PR automatically.');
+            return;
+        }
+        await (0, git_pr_1.configureGitUser)(workspaceDir);
+        const committed = await (0, git_pr_1.commitAndPushChanges)({
+            workspaceDir,
+            branch: branchName,
+            commitMessage,
+            files: changedFiles
+        });
+        if (!committed) {
+            core.info('[SyncMyDep] No changes committed.');
+            return;
+        }
+        const octokit = github.getOctokit(token);
+        const { owner, repo } = github.context.repo;
+        // Detect base branch
+        let baseBranch = 'main';
+        if (github.context.ref && github.context.ref.startsWith('refs/heads/')) {
+            baseBranch = github.context.ref.replace('refs/heads/', '');
+        }
+        else {
+            try {
+                const repoInfo = await octokit.rest.repos.get({ owner, repo });
+                baseBranch = repoInfo.data.default_branch || 'main';
+            }
+            catch {
+                baseBranch = 'main';
+            }
+        }
+        const prResult = await (0, git_pr_1.createOrUpdatePullRequest)({
+            octokit,
+            owner,
+            repo,
+            baseBranch,
+            headBranch: branchName,
+            title: prTitle,
+            body: prBody,
+            labels,
+            assignees,
+            reviewers
+        });
+        core.setOutput('pull-request-number', String(prResult.number));
+        core.setOutput('pull-request-url', prResult.url);
+        await core.summary
+            .addHeading('SyncMyDep: PR Created / Updated')
+            .addRaw(`🚀 **Pull Request #${prResult.number}**: [${prTitle}](${prResult.url})\n\n`)
+            .addRaw(prBody)
+            .write();
+    }
+    catch (error) {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        core.setFailed(`[SyncMyDep Action Failed]: ${errMsg}`);
+    }
+}
+run();
+
+
+/***/ }),
+
+/***/ 8855:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.buildMarkdownSummary = buildMarkdownSummary;
 /**
  * Builds a rich Markdown description for the Pull Request and GitHub Step Summary.
- * @param {object} params
- * @param {string} params.pm
- * @param {string[]} params.changedFiles
- * @param {string} params.diffStat
- * @param {boolean} params.syncedLockfile
- * @param {boolean} params.fixedAudit
- * @param {object} params.auditBefore
- * @param {object} params.auditAfter
- * @returns {string} Markdown content
  */
-function buildMarkdownSummary({
-  pm,
-  changedFiles,
-  diffStat,
-  syncedLockfile,
-  fixedAudit,
-  auditBefore,
-  auditAfter
-}) {
-  let md = `## 🤖 SyncMyDep: Automated Dependency Synchronization\n\n`;
-  md += `SyncMyDep detected desynchronization or security vulnerabilities in your project's dependencies and generated this Pull Request.\n\n`;
-
-  md += `### 📦 Overview\n\n`;
-  md += `- **Package Manager**: \`${pm}\`\n`;
-  md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
-  md += `- **Security Audit Fix**: ${fixedAudit ? '✅ Applied' : '⏭️ Skipped'}\n`;
-  md += `- **Modified Files**: ${changedFiles.length} file(s)\n\n`;
-
-  md += `### 📁 Modified Dependency Files\n\n`;
-  md += `| File | Status |\n`;
-  md += `| :--- | :--- |\n`;
-  for (const file of changedFiles) {
-    md += `| \`${file}\` | 🔄 Updated |\n`;
-  }
-  md += `\n`;
-
-  if (diffStat) {
-    md += `### 📊 Diff Summary\n\n`;
-    md += `\`\`\`text\n${diffStat}\n\`\`\`\n\n`;
-  }
-
-  if (auditBefore && auditBefore.total > 0) {
-    md += `### 🛡️ Vulnerability Audit\n\n`;
-    md += `- **Initial Vulnerabilities Detected**: ${auditBefore.total}\n`;
-    if (auditAfter) {
-      md += `- **Remaining Vulnerabilities After Fix**: ${auditAfter.total}\n`;
+function buildMarkdownSummary({ pm, changedFiles, diffStat, syncedLockfile, fixedAudit, auditBefore, auditAfter }) {
+    let md = `## 🤖 SyncMyDep: Automated Dependency Synchronization\n\n`;
+    md += `SyncMyDep detected desynchronization or security vulnerabilities in your project's dependencies and generated this Pull Request.\n\n`;
+    md += `### 📦 Overview\n\n`;
+    md += `- **Package Manager**: \`${pm}\`\n`;
+    md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
+    md += `- **Security Audit Fix**: ${fixedAudit ? '✅ Applied' : '⏭️ Skipped'}\n`;
+    md += `- **Modified Files**: ${changedFiles.length} file(s)\n\n`;
+    md += `### 📁 Modified Dependency Files\n\n`;
+    md += `| File | Status |\n`;
+    md += `| :--- | :--- |\n`;
+    for (const file of changedFiles) {
+        md += `| \`${file}\` | 🔄 Updated |\n`;
     }
-    if (auditBefore.summary) {
-      md += `\n<details>\n<summary>View vulnerability breakdown</summary>\n\n`;
-      md += `\`\`\`json\n${JSON.stringify(auditBefore.summary, null, 2)}\n\`\`\`\n`;
-      md += `</details>\n\n`;
+    md += `\n`;
+    if (diffStat) {
+        md += `### 📊 Diff Summary\n\n`;
+        md += `\`\`\`text\n${diffStat}\n\`\`\`\n\n`;
     }
-  }
-
-  md += `### 🔍 Maintainer Checklist\n\n`;
-  md += `- [ ] Verify automated CI test results pass.\n`;
-  md += `- [ ] Review any package version changes in \`package.json\` / lockfiles.\n`;
-  md += `- [ ] Merge this PR to ensure your repository dependencies stay synchronized and secure.\n\n`;
-
-  md += `---\n*Generated automatically by [SyncMyDep GitHub Action](https://github.com/nivinvysakh/syncmydep).*`;
-
-  return md;
+    if (auditBefore && auditBefore.total > 0) {
+        md += `### 🛡️ Vulnerability Audit\n\n`;
+        md += `- **Initial Vulnerabilities Detected**: ${auditBefore.total}\n`;
+        if (auditAfter) {
+            md += `- **Remaining Vulnerabilities After Fix**: ${auditAfter.total}\n`;
+        }
+        if (auditBefore.summary) {
+            md += `\n<details>\n<summary>View vulnerability breakdown</summary>\n\n`;
+            md += `\`\`\`json\n${JSON.stringify(auditBefore.summary, null, 2)}\n\`\`\`\n`;
+            md += `</details>\n\n`;
+        }
+    }
+    md += `### 🔍 Maintainer Checklist\n\n`;
+    md += `- [ ] Verify automated CI test results pass.\n`;
+    md += `- [ ] Review any package version changes in \`package.json\` / lockfiles.\n`;
+    md += `- [ ] Merge this PR to ensure your repository dependencies stay synchronized and secure.\n\n`;
+    md += `---\n*Generated automatically by [SyncMyDep GitHub Action](https://github.com/nivinvysakh/syncmydep).*`;
+    return md;
 }
-
-module.exports = {
-  buildMarkdownSummary
-};
 
 
 /***/ }),
@@ -32381,176 +32550,13 @@ module.exports = parseParams
 /******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";
 /******/ 	
 /************************************************************************/
-var __webpack_exports__ = {};
-const path = __nccwpck_require__(6928);
-const core = __nccwpck_require__(7484);
-const github = __nccwpck_require__(3228);
-
-const {
-  detectPackageManager,
-  checkPackageJsonExists,
-  inspectAudit
-} = __nccwpck_require__(6763);
-
-const {
-  syncLockfile,
-  runAuditFix,
-  getGitStatus,
-  getGitDiffStat
-} = __nccwpck_require__(7721);
-
-const {
-  configureGitUser,
-  commitAndPushChanges,
-  createOrUpdatePullRequest
-} = __nccwpck_require__(7492);
-
-const { buildMarkdownSummary } = __nccwpck_require__(9449);
-
-async function run() {
-  try {
-    const token = core.getInput('github-token') || process.env.GITHUB_TOKEN;
-    const pmInput = core.getInput('package-manager') || 'auto';
-    const workingDirInput = core.getInput('working-directory') || '.';
-    const syncLockfileOption = core.getBooleanInput('sync-lockfile');
-    const fixAuditOption = core.getBooleanInput('fix-audit');
-    const auditLevel = core.getInput('audit-level') || 'moderate';
-    const branchName = core.getInput('pr-branch') || 'syncmydep/dependency-fix';
-    const prTitle = core.getInput('pr-title') || 'chore(deps): synchronize package.json and lockfile issues';
-    const commitMessage = core.getInput('commit-message') || 'chore(deps): synchronize package.json and lockfile issues';
-    const labelsInput = core.getInput('pr-labels') || '';
-    const assigneesInput = core.getInput('pr-assignees') || '';
-    const reviewersInput = core.getInput('pr-reviewers') || '';
-
-    const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
-    const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
-    const reviewers = reviewersInput ? reviewersInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
-
-    const workspaceDir = path.resolve(process.cwd(), workingDirInput);
-    core.info(`[SyncMyDep] Working directory: ${workspaceDir}`);
-
-    if (!checkPackageJsonExists(workspaceDir)) {
-      throw new Error(`package.json was not found in ${workspaceDir}`);
-    }
-
-    const pm = detectPackageManager(workspaceDir, pmInput);
-    core.info(`[SyncMyDep] Active package manager: ${pm}`);
-
-    let auditBefore = null;
-    let auditAfter = null;
-
-    if (fixAuditOption) {
-      auditBefore = await inspectAudit(workspaceDir, pm);
-      core.info(`[SyncMyDep] Initial audit scan found ${auditBefore.total} vulnerabilities.`);
-    }
-
-    let syncedLockfile = false;
-    if (syncLockfileOption) {
-      const syncResult = await syncLockfile(workspaceDir, pm);
-      syncedLockfile = syncResult.success;
-    }
-
-    let fixedAudit = false;
-    if (fixAuditOption) {
-      const auditResult = await runAuditFix(workspaceDir, pm, auditLevel);
-      fixedAudit = auditResult.success;
-      auditAfter = await inspectAudit(workspaceDir, pm);
-    }
-
-    const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
-
-    if (!hasChanges) {
-      core.info('✅ [SyncMyDep] No dependency issues or lockfile desync detected. Everything is up-to-date!');
-      core.setOutput('changes-detected', 'false');
-      core.setOutput('modified-files', '');
-
-      await core.summary
-        .addHeading('SyncMyDep: Dependency Check Result')
-        .addRaw('✅ **All dependencies and lockfiles are synchronized and healthy.** No Pull Request is needed.')
-        .write();
-
-      return;
-    }
-
-    core.info(`[SyncMyDep] Changes detected in files: ${changedFiles.join(', ')}`);
-    core.setOutput('changes-detected', 'true');
-    core.setOutput('modified-files', changedFiles.join(','));
-
-    const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
-    const prBody = buildMarkdownSummary({
-      pm,
-      changedFiles,
-      diffStat,
-      syncedLockfile,
-      fixedAudit,
-      auditBefore,
-      auditAfter
-    });
-
-    if (!token) {
-      core.warning('[SyncMyDep] No github-token provided. Cannot push branch or create PR automatically.');
-      return;
-    }
-
-    await configureGitUser(workspaceDir);
-
-    const committed = await commitAndPushChanges({
-      workspaceDir,
-      branch: branchName,
-      commitMessage,
-      files: changedFiles
-    });
-
-    if (!committed) {
-      core.info('[SyncMyDep] No changes committed.');
-      return;
-    }
-
-    const octokit = github.getOctokit(token);
-    const { owner, repo } = github.context.repo;
-
-    // Detect base branch
-    let baseBranch = 'main';
-    if (github.context.ref && github.context.ref.startsWith('refs/heads/')) {
-      baseBranch = github.context.ref.replace('refs/heads/', '');
-    } else {
-      try {
-        const repoInfo = await octokit.rest.repos.get({ owner, repo });
-        baseBranch = repoInfo.data.default_branch || 'main';
-      } catch {
-        baseBranch = 'main';
-      }
-    }
-
-    const prResult = await createOrUpdatePullRequest({
-      octokit,
-      owner,
-      repo,
-      baseBranch,
-      headBranch: branchName,
-      title: prTitle,
-      body: prBody,
-      labels,
-      assignees,
-      reviewers
-    });
-
-    core.setOutput('pull-request-number', String(prResult.number));
-    core.setOutput('pull-request-url', prResult.url);
-
-    await core.summary
-      .addHeading('SyncMyDep: PR Created / Updated')
-      .addRaw(`🚀 **Pull Request #${prResult.number}**: [${prTitle}](${prResult.url})\n\n`)
-      .addRaw(prBody)
-      .write();
-  } catch (error) {
-    core.setFailed(`[SyncMyDep Action Failed]: ${error.message}`);
-  }
-}
-
-run();
-
-module.exports = __webpack_exports__;
+/******/ 	
+/******/ 	// startup
+/******/ 	// Load entry module and return exports
+/******/ 	// This entry module is referenced by other modules so it can't be inlined
+/******/ 	var __webpack_exports__ = __nccwpck_require__(9407);
+/******/ 	module.exports = __webpack_exports__;
+/******/ 	
 /******/ })()
 ;
 //# sourceMappingURL=index.js.map

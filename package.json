@@ -4,7 +4,8 @@
   "description": "GitHub Action that detects package.json and lockfile mismatches, audits vulnerabilities, resolves them, and automatically opens a Pull Request.",
   "main": "dist/index.js",
   "scripts": {
-    "build": "ncc build src/index.js -o dist --source-map --license licenses.txt",
+    "build": "ncc build src/index.ts -o dist --source-map --license licenses.txt",
+    "typecheck": "tsc --noEmit",
     "test": "jest",
     "lint": "eslint ."
   },
@@ -27,8 +28,13 @@
     "@actions/github": "^6.0.1"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.2.0",
     "@vercel/ncc": "^0.38.3",
     "eslint": "^10.9.0",
-    "jest": "^30.4.2"
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.12",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0"
   }
 }

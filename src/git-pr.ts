@@ -1,11 +1,15 @@
-const exec = require('@actions/exec');
-const core = require('@actions/core');
+import * as exec from '@actions/exec';
+import * as core from '@actions/core';
+import {
+  CommitAndPushParams,
+  CreateOrUpdatePullRequestParams,
+  PullRequestResult
+} from './types';
 
 /**
  * Sets up git bot credentials.
- * @param {string} workspaceDir
  */
-async function configureGitUser(workspaceDir) {
+export async function configureGitUser(workspaceDir: string): Promise<void> {
   const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
   await exec.exec('git', ['config', 'user.name', 'github-actions[bot]'], options);
   await exec.exec('git', ['config', 'user.email', 'github-actions[bot]@users.noreply.github.com'], options);
@@ -13,13 +17,13 @@ async function configureGitUser(workspaceDir) {
 
 /**
  * Creates/checks out a branch, commits modified files, and pushes to origin.
- * @param {object} params
- * @param {string} params.workspaceDir
- * @param {string} params.branch
- * @param {string} params.commitMessage
- * @param {string[]} params.files
  */
-async function commitAndPushChanges({ workspaceDir, branch, commitMessage, files }) {
+export async function commitAndPushChanges({
+  workspaceDir,
+  branch,
+  commitMessage,
+  files
+}: CommitAndPushParams): Promise<boolean> {
   const options = { cwd: workspaceDir, ignoreReturnCode: true };
 
   core.info(`[SyncMyDep] Checking out branch: ${branch}...`);
@@ -46,20 +50,8 @@ async function commitAndPushChanges({ workspaceDir, branch, commitMessage, files
 
 /**
  * Creates or updates a GitHub Pull Request using Octokit.
- * @param {object} params
- * @param {object} params.octokit
- * @param {string} params.owner
- * @param {string} params.repo
- * @param {string} params.baseBranch
- * @param {string} params.headBranch
- * @param {string} params.title
- * @param {string} params.body
- * @param {string[]} [params.labels]
- * @param {string[]} [params.assignees]
- * @param {string[]} [params.reviewers]
- * @returns {Promise<{number: number, url: string, isNew: boolean}>}
  */
-async function createOrUpdatePullRequest({
+export async function createOrUpdatePullRequest({
   octokit,
   owner,
   repo,
@@ -70,7 +62,7 @@ async function createOrUpdatePullRequest({
   labels = [],
   assignees = [],
   reviewers = []
-}) {
+}: CreateOrUpdatePullRequestParams): Promise<PullRequestResult> {
   core.info(`[SyncMyDep] Checking for existing Pull Request for branch ${headBranch}...`);
 
   // Query existing PRs
@@ -82,17 +74,20 @@ async function createOrUpdatePullRequest({
     base: baseBranch
   });
 
-  let pr;
+  let prNumber: number;
+  let prUrl: string;
   let isNew = false;
 
   if (pullRequests && pullRequests.length > 0) {
-    pr = pullRequests[0];
-    core.info(`[SyncMyDep] Found existing Pull Request #${pr.number}. Updating...`);
+    const existingPr = pullRequests[0];
+    prNumber = existingPr.number;
+    prUrl = existingPr.html_url;
+    core.info(`[SyncMyDep] Found existing Pull Request #${prNumber}. Updating...`);
 
     await octokit.rest.pulls.update({
       owner,
       repo,
-      pull_number: pr.number,
+      pull_number: prNumber,
       title,
       body
     });
@@ -101,11 +96,12 @@ async function createOrUpdatePullRequest({
       await octokit.rest.issues.createComment({
         owner,
         repo,
-        issue_number: pr.number,
+        issue_number: prNumber,
         body: `🔄 **SyncMyDep Update**: Refreshed dependency synchronization and pushed latest fixes.`
       });
-    } catch (err) {
-      core.warning(`Could not post comment to PR #${pr.number}: ${err.message}`);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      core.warning(`Could not post comment to PR #${prNumber}: ${errMsg}`);
     }
   } else {
     core.info(`[SyncMyDep] Creating new Pull Request...`);
@@ -118,9 +114,10 @@ async function createOrUpdatePullRequest({
       base: baseBranch
     });
 
-    pr = newPr;
+    prNumber = newPr.number;
+    prUrl = newPr.html_url;
     isNew = true;
-    core.info(`[SyncMyDep] Successfully created Pull Request #${pr.number}: ${pr.html_url}`);
+    core.info(`[SyncMyDep] Successfully created Pull Request #${prNumber}: ${prUrl}`);
   }
 
   // Apply labels
@@ -129,11 +126,12 @@ async function createOrUpdatePullRequest({
       await octokit.rest.issues.addLabels({
         owner,
         repo,
-        issue_number: pr.number,
+        issue_number: prNumber,
         labels
       });
-    } catch (err) {
-      core.warning(`Could not apply labels to PR #${pr.number}: ${err.message}`);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      core.warning(`Could not apply labels to PR #${prNumber}: ${errMsg}`);
     }
   }
 
@@ -143,11 +141,12 @@ async function createOrUpdatePullRequest({
       await octokit.rest.issues.addAssignees({
         owner,
         repo,
-        issue_number: pr.number,
+        issue_number: prNumber,
         assignees
       });
-    } catch (err) {
-      core.warning(`Could not assign users to PR #${pr.number}: ${err.message}`);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      core.warning(`Could not assign users to PR #${prNumber}: ${errMsg}`);
     }
   }
 
@@ -157,23 +156,18 @@ async function createOrUpdatePullRequest({
       await octokit.rest.pulls.requestReviewers({
         owner,
         repo,
-        pull_number: pr.number,
+        pull_number: prNumber,
         reviewers
       });
-    } catch (err) {
-      core.warning(`Could not request reviewers for PR #${pr.number}: ${err.message}`);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      core.warning(`Could not request reviewers for PR #${prNumber}: ${errMsg}`);
     }
   }
 
   return {
-    number: pr.number,
-    url: pr.html_url,
+    number: prNumber,
+    url: prUrl,
     isNew
   };
 }
-
-module.exports = {
-  configureGitUser,
-  commitAndPushChanges,
-  createOrUpdatePullRequest
-};

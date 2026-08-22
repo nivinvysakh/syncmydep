@@ -1,13 +1,14 @@
-const exec = require('@actions/exec');
-const core = require('@actions/core');
+import * as exec from '@actions/exec';
+import * as core from '@actions/core';
+import { PackageManager, SyncResult, GitStatusResult } from './types';
 
 /**
  * Synchronizes the lockfile with package.json specifications.
- * @param {string} workspaceDir
- * @param {string} pm
- * @returns {Promise<{success: boolean, output: string}>}
  */
-async function syncLockfile(workspaceDir, pm) {
+export async function syncLockfile(
+  workspaceDir: string,
+  pm: PackageManager
+): Promise<SyncResult> {
   core.info(`[SyncMyDep] Synchronizing lockfile using ${pm}...`);
   let output = '';
   let errorOutput = '';
@@ -16,10 +17,10 @@ async function syncLockfile(workspaceDir, pm) {
     cwd: workspaceDir,
     ignoreReturnCode: true,
     listeners: {
-      stdout: (data) => {
+      stdout: (data: Buffer) => {
         output += data.toString();
       },
-      stderr: (data) => {
+      stderr: (data: Buffer) => {
         errorOutput += data.toString();
       }
     }
@@ -45,12 +46,12 @@ async function syncLockfile(workspaceDir, pm) {
 
 /**
  * Runs security audit fix to update vulnerable packages.
- * @param {string} workspaceDir
- * @param {string} pm
- * @param {string} auditLevel
- * @returns {Promise<{success: boolean, output: string}>}
  */
-async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
+export async function runAuditFix(
+  workspaceDir: string,
+  pm: PackageManager,
+  auditLevel: string = 'moderate'
+): Promise<SyncResult> {
   core.info(`[SyncMyDep] Running security audit fix using ${pm} (level: ${auditLevel})...`);
   let output = '';
   let errorOutput = '';
@@ -59,10 +60,10 @@ async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
     cwd: workspaceDir,
     ignoreReturnCode: true,
     listeners: {
-      stdout: (data) => {
+      stdout: (data: Buffer) => {
         output += data.toString();
       },
-      stderr: (data) => {
+      stderr: (data: Buffer) => {
         errorOutput += data.toString();
       }
     }
@@ -85,10 +86,8 @@ async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
 
 /**
  * Checks git status for any modified or untracked dependency files.
- * @param {string} workspaceDir
- * @returns {Promise<{hasChanges: boolean, changedFiles: string[]}>}
  */
-async function getGitStatus(workspaceDir) {
+export async function getGitStatus(workspaceDir: string): Promise<GitStatusResult> {
   let statusOutput = '';
 
   const options = {
@@ -96,7 +95,7 @@ async function getGitStatus(workspaceDir) {
     ignoreReturnCode: true,
     silent: true,
     listeners: {
-      stdout: (data) => {
+      stdout: (data: Buffer) => {
         statusOutput += data.toString();
       }
     }
@@ -104,7 +103,7 @@ async function getGitStatus(workspaceDir) {
 
   await exec.exec('git', ['status', '--porcelain'], options);
 
-  const changedFiles = [];
+  const changedFiles: string[] = [];
   const lines = statusOutput.split(/\r?\n/);
 
   for (const line of lines) {
@@ -130,11 +129,11 @@ async function getGitStatus(workspaceDir) {
 
 /**
  * Gets git diff summary for the changed dependency files.
- * @param {string} workspaceDir
- * @param {string[]} files
- * @returns {Promise<string>}
  */
-async function getGitDiffStat(workspaceDir, files = []) {
+export async function getGitDiffStat(
+  workspaceDir: string,
+  files: string[] = []
+): Promise<string> {
   let diffStat = '';
 
   const options = {
@@ -142,7 +141,7 @@ async function getGitDiffStat(workspaceDir, files = []) {
     ignoreReturnCode: true,
     silent: true,
     listeners: {
-      stdout: (data) => {
+      stdout: (data: Buffer) => {
         diffStat += data.toString();
       }
     }
@@ -156,10 +155,3 @@ async function getGitDiffStat(workspaceDir, files = []) {
   await exec.exec('git', args, options);
   return diffStat.trim();
 }
-
-module.exports = {
-  syncLockfile,
-  runAuditFix,
-  getGitStatus,
-  getGitDiffStat
-};

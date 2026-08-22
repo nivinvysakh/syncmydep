@@ -1,6 +1,6 @@
-const fs = require('fs');
-const path = require('path');
-const { detectPackageManager, checkPackageJsonExists, getLockfileName } = require('../src/detector');
+import * as fs from 'fs';
+import * as path from 'path';
+import { detectPackageManager, checkPackageJsonExists, getLockfileName } from '../src/detector';
 
 describe('detector', () => {
   const tempDir = path.join(__dirname, 'fixtures');

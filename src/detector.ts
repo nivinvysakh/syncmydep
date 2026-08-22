@@ -1,18 +1,19 @@
-const fs = require('fs');
-const path = require('path');
-const exec = require('@actions/exec');
+import * as fs from 'fs';
+import * as path from 'path';
+import * as exec from '@actions/exec';
+import { PackageManager, AuditInspectionResult } from './types';
 
 /**
  * Detects the appropriate package manager for the workspace.
- * @param {string} workspaceDir
- * @param {string} specifiedPm
- * @returns {string} 'npm' | 'yarn' | 'pnpm'
  */
-function detectPackageManager(workspaceDir, specifiedPm = 'auto') {
+export function detectPackageManager(
+  workspaceDir: string,
+  specifiedPm: string = 'auto'
+): PackageManager {
   if (specifiedPm && specifiedPm !== 'auto') {
-    const valid = ['npm', 'yarn', 'pnpm'];
-    if (valid.includes(specifiedPm.toLowerCase())) {
-      return specifiedPm.toLowerCase();
+    const lower = specifiedPm.toLowerCase();
+    if (lower === 'npm' || lower === 'yarn' || lower === 'pnpm') {
+      return lower;
     }
   }
 
@@ -30,19 +31,15 @@ function detectPackageManager(workspaceDir, specifiedPm = 'auto') {
 
 /**
  * Checks if package.json exists in the specified directory.
- * @param {string} workspaceDir
- * @returns {boolean}
  */
-function checkPackageJsonExists(workspaceDir) {
+export function checkPackageJsonExists(workspaceDir: string): boolean {
   return fs.existsSync(path.join(workspaceDir, 'package.json'));
 }
 
 /**
  * Gets the lockfile name associated with a package manager.
- * @param {string} pm
- * @returns {string}
  */
-function getLockfileName(pm) {
+export function getLockfileName(pm: PackageManager): string {
   switch (pm) {
     case 'pnpm':
       return 'pnpm-lock.yaml';
@@ -56,11 +53,11 @@ function getLockfileName(pm) {
 
 /**
  * Runs a quick audit query to inspect vulnerabilities before/after fixing.
- * @param {string} workspaceDir
- * @param {string} pm
- * @returns {Promise<{total: number, vulnerabilities: object}>}
  */
-async function inspectAudit(workspaceDir, pm) {
+export async function inspectAudit(
+  workspaceDir: string,
+  pm: PackageManager
+): Promise<AuditInspectionResult> {
   let stdout = '';
 
   const options = {
@@ -68,7 +65,7 @@ async function inspectAudit(workspaceDir, pm) {
     ignoreReturnCode: true,
     silent: true,
     listeners: {
-      stdout: (data) => {
+      stdout: (data: Buffer) => {
         stdout += data.toString();
       }
     }
@@ -80,9 +77,9 @@ async function inspectAudit(workspaceDir, pm) {
       if (stdout) {
         const parsed = JSON.parse(stdout);
         const metadata = parsed.metadata || {};
-        const vulnCounts = metadata.vulnerabilities || parsed.vulnerabilities || {};
+        const vulnCounts: Record<string, number> = metadata.vulnerabilities || parsed.vulnerabilities || {};
         const total = typeof metadata.vulnerabilities === 'object'
-          ? Object.values(metadata.vulnerabilities).reduce((a, b) => a + b, 0)
+          ? Object.values(metadata.vulnerabilities as Record<string, number>).reduce((a, b) => a + b, 0)
           : (parsed.auditReportVersion ? Object.keys(parsed.vulnerabilities || {}).length : 0);
 
         return {
@@ -98,10 +95,3 @@ async function inspectAudit(workspaceDir, pm) {
 
   return { total: 0, summary: {}, raw: null };
 }
-
-module.exports = {
-  detectPackageManager,
-  checkPackageJsonExists,
-  getLockfileName,
-  inspectAudit
-};
