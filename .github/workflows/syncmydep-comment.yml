@@ -26,7 +26,7 @@ jobs:
           node-version: 20
 
       - name: Run SyncMyDep
-        uses: ./ # Or nivinvysakh/syncmydep@main
+        uses: ./
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-trigger: 'syncdep'

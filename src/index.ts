@@ -25,7 +25,7 @@ import {
   createOrUpdatePullRequest
 } from './git-pr';
 
-import { buildMarkdownSummary } from './summary';
+import { buildMarkdownSummary, buildCommentSummary } from './summary';
 import { AuditInspectionResult } from './types';
 
 async function run(): Promise<void> {
@@ -170,14 +170,16 @@ async function run(): Promise<void> {
       core.setOutput('modified-files', changedFiles.join(','));
 
       const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
-      const prBody = buildMarkdownSummary({
+      const commentMarkdown = buildCommentSummary({
         pm,
         changedFiles,
         diffStat,
         syncedLockfile,
         fixedAudit,
         auditBefore,
-        auditAfter
+        auditAfter,
+        branch: prDetails.headBranch,
+        commenter
       });
 
       const committed = await commitAndPushChanges({
@@ -197,7 +199,7 @@ async function run(): Promise<void> {
           owner,
           repo,
           prNumber,
-          `🚀 **SyncMyDep**: Successfully synchronized dependencies and pushed updates directly to \`${prDetails.headBranch}\`!\n\n${prBody}`
+          commentMarkdown
         );
 
         core.info(`[SyncMyDep] Successfully pushed dependency fixes to branch ${prDetails.headBranch}`);

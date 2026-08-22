@@ -22,6 +22,10 @@ export interface SummaryOptions {
     auditBefore: AuditInspectionResult | null;
     auditAfter: AuditInspectionResult | null;
 }
+export interface CommentSummaryOptions extends SummaryOptions {
+    branch: string;
+    commenter?: string;
+}
 export interface CommitAndPushParams {
     workspaceDir: string;
     branch: string;

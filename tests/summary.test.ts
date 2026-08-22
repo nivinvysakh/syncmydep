@@ -1,7 +1,7 @@
-import { buildMarkdownSummary } from '../src/summary';
+import { buildMarkdownSummary, buildCommentSummary } from '../src/summary';
 
 describe('summary builder', () => {
-  test('builds accurate markdown table and stats', () => {
+  test('builds accurate markdown table and stats for new PR', () => {
     const summary = buildMarkdownSummary({
       pm: 'npm',
       changedFiles: ['package.json', 'package-lock.json'],
@@ -19,6 +19,26 @@ describe('summary builder', () => {
     expect(summary).toContain('package-lock.json | 10 +++++-----');
     expect(summary).toContain('Initial Vulnerabilities Detected**: 2');
     expect(summary).toContain('Remaining Vulnerabilities After Fix**: 0');
+  });
+
+  test('builds accurate markdown comment for PR comment trigger', () => {
+    const comment = buildCommentSummary({
+      pm: 'npm',
+      changedFiles: ['package-lock.json'],
+      diffStat: 'package-lock.json | 20 ++++++++',
+      syncedLockfile: true,
+      fixedAudit: true,
+      auditBefore: { total: 1, summary: { high: 1 }, raw: null },
+      auditAfter: { total: 0, summary: {}, raw: null },
+      branch: 'feature/auth-fix',
+      commenter: 'nivinvysakh'
+    });
+
+    expect(comment).toContain('SyncMyDep: Dependencies Synchronized on `feature/auth-fix`');
+    expect(comment).toContain('@nivinvysakh');
+    expect(comment).toContain('`package-lock.json`');
+    expect(comment).toContain('🔄 Synchronized & Pushed');
+    expect(comment).toContain('package-lock.json | 20 ++++++++');
   });
 
   test('handles clean audit and skipped actions gracefully', () => {
