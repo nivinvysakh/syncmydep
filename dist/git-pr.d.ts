@@ -6,7 +6,7 @@ export declare function configureGitUser(workspaceDir: string): Promise<void>;
 /**
  * Checks out a specific branch locally and pulls latest if available.
  */
-export declare function checkoutBranch(workspaceDir: string, branch: string): Promise<void>;
+export declare function checkoutBranch(workspaceDir: string, branch: string, prNumber?: number): Promise<void>;
 /**
  * Creates/checks out a branch, commits modified files, and pushes to origin.
  */

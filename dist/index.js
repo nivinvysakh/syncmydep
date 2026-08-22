@@ -32080,10 +32080,13 @@ async function configureGitUser(workspaceDir) {
 /**
  * Checks out a specific branch locally and pulls latest if available.
  */
-async function checkoutBranch(workspaceDir, branch) {
+async function checkoutBranch(workspaceDir, branch, prNumber) {
     const options = { cwd: workspaceDir, ignoreReturnCode: true };
     core.info(`[SyncMyDep] Fetching and checking out branch ${branch}...`);
-    await exec.exec('git', ['fetch', 'origin', branch], options);
+    if (prNumber) {
+        await exec.exec('git', ['fetch', 'origin', `pull/${prNumber}/head:${branch}`], options);
+    }
+    await exec.exec('git', ['fetch', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`], options);
     const checkoutCode = await exec.exec('git', ['checkout', branch], options);
     if (checkoutCode !== 0) {
         await exec.exec('git', ['checkout', '-B', branch, `origin/${branch}`], options);
@@ -32368,7 +32371,7 @@ async function run() {
             core.info(`[SyncMyDep] PR #${prNumber} head branch: ${prDetails.headBranch}`);
             // Checkout PR branch
             await configureGitUser(workspaceDir);
-            await checkoutBranch(workspaceDir, prDetails.headBranch);
+            await checkoutBranch(workspaceDir, prDetails.headBranch, prNumber);
             if (!checkPackageJsonExists(workspaceDir)) {
                 throw new Error(`package.json was not found in ${workspaceDir} on branch ${prDetails.headBranch}`);
             }

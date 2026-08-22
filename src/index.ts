@@ -94,7 +94,7 @@ async function run(): Promise<void> {
 
       // Checkout PR branch
       await configureGitUser(workspaceDir);
-      await checkoutBranch(workspaceDir, prDetails.headBranch);
+      await checkoutBranch(workspaceDir, prDetails.headBranch, prNumber);
 
       if (!checkPackageJsonExists(workspaceDir)) {
         throw new Error(`package.json was not found in ${workspaceDir} on branch ${prDetails.headBranch}`);

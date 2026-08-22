@@ -21,10 +21,13 @@ export async function configureGitUser(workspaceDir: string): Promise<void> {
 /**
  * Checks out a specific branch locally and pulls latest if available.
  */
-export async function checkoutBranch(workspaceDir: string, branch: string): Promise<void> {
+export async function checkoutBranch(workspaceDir: string, branch: string, prNumber?: number): Promise<void> {
   const options = { cwd: workspaceDir, ignoreReturnCode: true };
   core.info(`[SyncMyDep] Fetching and checking out branch ${branch}...`);
-  await exec.exec('git', ['fetch', 'origin', branch], options);
+  if (prNumber) {
+    await exec.exec('git', ['fetch', 'origin', `pull/${prNumber}/head:${branch}`], options);
+  }
+  await exec.exec('git', ['fetch', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`], options);
   const checkoutCode = await exec.exec('git', ['checkout', branch], options);
   if (checkoutCode !== 0) {
     await exec.exec('git', ['checkout', '-B', branch, `origin/${branch}`], options);
