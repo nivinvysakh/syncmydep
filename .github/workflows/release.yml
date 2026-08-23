@@ -29,3 +29,12 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Floating Major Tag (e.g. v1)
+        if: startsWith(github.ref_name, 'v') && !contains(github.ref_name, '-')
+        run: |
+          MAJOR_VERSION=$(echo "${{ github.ref_name }}" | cut -d. -f1)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -fa "$MAJOR_VERSION" -m "Update $MAJOR_VERSION to ${{ github.ref_name }}"
+          git push origin "$MAJOR_VERSION" --force

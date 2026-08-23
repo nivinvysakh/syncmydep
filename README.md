@@ -1,6 +1,7 @@
 # 🔄 SyncMyDep
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/nivinvysakh/syncmydep/blob/main/LICENSE)
+[![GitHub Release](https://img.shields.io/github/v/release/nivinvysakh/syncmydep?color=purple&label=latest%20release)](https://github.com/nivinvysakh/syncmydep/releases/latest)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 [![Automated Dependency Sync](https://img.shields.io/badge/SyncMyDep-Action-purple.svg)](https://github.com/nivinvysakh/syncmydep)
