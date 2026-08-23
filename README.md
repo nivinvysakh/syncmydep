@@ -31,6 +31,17 @@
 - 📊 **Detailed Dependency Diff Reports**: Markdown tables highlighting added (`✨`), upgraded (`🔄`), and removed (`🗑️`) packages with exact before-and-after versions.
 - ⚡ **Zero-Dependency Fast Runner**: Standalone compiled bundle using `@vercel/ncc` with no runtime `npm install` overhead on runners.
 
+
+## 🍃 Demo Video
+
+
+https://github.com/user-attachments/assets/351c3dbd-88bd-42ca-87a4-6b8a25523ec9
+
+
+
+
+
+
 ---
 
 ## 🚀 Workflows
