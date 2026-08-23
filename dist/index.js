@@ -32131,12 +32131,15 @@ async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
             args = ['audit', '--fix'];
             break;
         case 'bun':
+            command = 'bun';
+            args = ['update'];
+            break;
         case 'deno':
         default:
             core.info(`[SyncMyDep] Automated security audit fix is not supported for ${pm}. Skipping audit fix step.`);
             return { success: true, output: '' };
     }
-    core.info(`[SyncMyDep] Running security audit fix using ${command} (level: ${auditLevel})...`);
+    core.info(`[SyncMyDep] Running dependency fix/update using ${command} ${args.join(' ')} (level: ${auditLevel})...`);
     const options = {
         cwd: workspaceDir,
         ignoreReturnCode: true,
