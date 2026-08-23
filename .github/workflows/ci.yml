@@ -46,8 +46,4 @@ jobs:
 
       - name: Check for uncommitted dist changes
         run: |
-          if [[ -n $(git status --porcelain dist/) ]]; then
-            echo "Error: dist/ is out of date. Please run 'npm run build' and commit changes."
-            git diff dist/
-            exit 1
-          fi
+          git diff --ignore-space-at-eol --exit-code dist/ || (echo "Error: dist/ is out of date. Please run 'npm run build' and commit changes." && git diff dist/ && exit 1)
