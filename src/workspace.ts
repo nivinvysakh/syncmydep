@@ -106,7 +106,7 @@ function findWorkspacePackages(workspaceDir: string, patterns: string[]): string
           if (entry.isDirectory()) {
             const childPkg = path.join(fullBaseDir, entry.name, 'package.json');
             if (fs.existsSync(childPkg)) {
-              discovered.push(path.join(baseDirName, entry.name));
+              discovered.push(path.join(baseDirName, entry.name).replace(/\\/g, '/'));
             }
           }
         }

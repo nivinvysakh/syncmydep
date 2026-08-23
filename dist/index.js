@@ -36272,7 +36272,7 @@ function findWorkspacePackages(workspaceDir, patterns) {
                     if (entry.isDirectory()) {
                         const childPkg = external_path_.join(fullBaseDir, entry.name, 'package.json');
                         if (external_fs_.existsSync(childPkg)) {
-                            discovered.push(external_path_.join(baseDirName, entry.name));
+                            discovered.push(external_path_.join(baseDirName, entry.name).replace(/\\/g, '/'));
                         }
                     }
                 }
