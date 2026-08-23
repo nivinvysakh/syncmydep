@@ -44,6 +44,7 @@ on:
   push:
     paths:
       - 'package.json'
+      - '.syncmydep.yml'
       - 'pnpm-workspace.yaml'
       - 'bun.lock'
       - 'deno.json'
@@ -73,13 +74,9 @@ jobs:
         uses: nivinvysakh/syncmydep@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          package-manager: 'auto'
+          # All settings can be defined in .syncmydep.yml or overridden below:
           sync-lockfile: 'true'
           fix-audit: 'true'
-          audit-level: 'moderate'
-          pr-branch: 'syncmydep/dependency-fix'
-          pr-title: 'chore(deps): synchronize package.json and lockfile'
-          pr-labels: 'dependencies, automated-pr'
 ```
 
 ---
