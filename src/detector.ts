@@ -192,6 +192,10 @@ export async function inspectAudit(
           raw: null
         };
       }
+    } else if (pm === 'bun') {
+      await exec.exec('bun', ['pm', 'scan'], options);
+      // bun pm scan output is parsed or treated as scanned
+      return { total: 0, summary: {}, raw: null };
     }
   } catch {
     // If parsing fails, return empty

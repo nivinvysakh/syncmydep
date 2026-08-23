@@ -118,13 +118,9 @@ export async function runAuditFix(
       break;
 
     case 'bun':
-      command = 'bun';
-      args = ['pm', 'audit'];
-      break;
-
     case 'deno':
     default:
-      core.info(`[SyncMyDep] Automated audit fix is not supported for ${pm}. Skipping audit fix step.`);
+      core.info(`[SyncMyDep] Automated security audit fix is not supported for ${pm}. Skipping audit fix step.`);
       return { success: true, output: '' };
   }
 
