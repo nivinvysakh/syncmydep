@@ -29,6 +29,7 @@ import {
 
 import { loadConfigFile } from './config';
 import { detectWorkspace } from './workspace';
+import { ensurePackageManagerInstalled } from './installer';
 import { buildMarkdownSummary, buildCommentSummary } from './summary';
 import { AuditInspectionResult } from './types';
 
@@ -146,6 +147,8 @@ async function run(): Promise<void> {
       const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
       core.info(`[SyncMyDep] Active package manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
 
+      await ensurePackageManagerInstalled(pm);
+
       if (!checkPackageJsonExists(workspaceDir, pm)) {
         throw new Error(`Package manifest was not found in ${workspaceDir} on branch ${prDetails.headBranch}`);
       }
@@ -244,6 +247,8 @@ async function run(): Promise<void> {
     const pm = detectPackageManager(workspaceDir, pmInput);
     const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
     core.info(`[SyncMyDep] Active package manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
+
+    await ensurePackageManagerInstalled(pm);
 
     if (!checkPackageJsonExists(workspaceDir, pm)) {
       throw new Error(`Package manifest was not found in ${workspaceDir}`);

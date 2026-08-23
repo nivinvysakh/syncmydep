@@ -36280,6 +36280,77 @@ function findWorkspacePackages(workspaceDir, patterns) {
     return Array.from(new Set(discovered));
 }
 
+// EXTERNAL MODULE: ./node_modules/@actions/io/lib/io.js
+var io = __nccwpck_require__(4994);
+;// CONCATENATED MODULE: ./src/installer.ts
+
+
+
+
+/**
+ * Checks if the detected package manager CLI is installed in PATH.
+ * If missing, automatically installs it for the GitHub runner.
+ */
+async function ensurePackageManagerInstalled(pm) {
+    if (pm === 'npm')
+        return; // npm is bundled with Node.js
+    try {
+        const existing = await io.which(pm, false);
+        if (existing) {
+            core.info(`[SyncMyDep] Found ${pm} executable in PATH at: ${existing}`);
+            return;
+        }
+    }
+    catch {
+        // continue to auto-install
+    }
+    core.info(`[SyncMyDep] 📦 '${pm}' is not found in PATH. Auto-installing ${pm} for the runner...`);
+    const options = { ignoreReturnCode: true };
+    switch (pm) {
+        case 'bun': {
+            // 1. Try global npm install
+            const npmCode = await exec.exec('npm', ['install', '-g', 'bun'], options);
+            if (npmCode !== 0) {
+                // 2. Fallback to official curl script
+                await exec.exec('bash', ['-c', 'curl -fsSL https://bun.sh/install | bash'], options);
+            }
+            const home = process.env.HOME || '/root';
+            const bunBin = external_path_.join(home, '.bun', 'bin');
+            core.addPath(bunBin);
+            process.env.PATH = `${bunBin}:${process.env.PATH}`;
+            break;
+        }
+        case 'pnpm': {
+            await exec.exec('npm', ['install', '-g', 'pnpm'], options);
+            break;
+        }
+        case 'yarn': {
+            await exec.exec('npm', ['install', '-g', 'yarn'], options);
+            break;
+        }
+        case 'deno': {
+            const npmCode = await exec.exec('npm', ['install', '-g', 'deno'], options);
+            if (npmCode !== 0) {
+                await exec.exec('bash', ['-c', 'curl -fsSL https://deno.land/install.sh | sh'], options);
+            }
+            const home = process.env.HOME || '/root';
+            const denoBin = external_path_.join(home, '.deno', 'bin');
+            core.addPath(denoBin);
+            process.env.PATH = `${denoBin}:${process.env.PATH}`;
+            break;
+        }
+    }
+    try {
+        const verified = await io.which(pm, false);
+        if (verified) {
+            core.info(`[SyncMyDep] ✅ Successfully installed and verified ${pm} (${verified})`);
+        }
+    }
+    catch {
+        core.info(`[SyncMyDep] Auto-installation step completed for ${pm}`);
+    }
+}
+
 ;// CONCATENATED MODULE: ./src/summary.ts
 /**
  * Builds a rich Markdown description for the Pull Request and GitHub Step Summary.
@@ -36406,6 +36477,7 @@ function buildDependencyDiffTable(diffs) {
 
 
 
+
 async function run() {
     try {
         const customConfigPath = core.getInput('config-file') || '';
@@ -36494,6 +36566,7 @@ async function run() {
             const pm = detectPackageManager(workspaceDir, pmInput);
             const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
             core.info(`[SyncMyDep] Active package manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
+            await ensurePackageManagerInstalled(pm);
             if (!checkPackageJsonExists(workspaceDir, pm)) {
                 throw new Error(`Package manifest was not found in ${workspaceDir} on branch ${prDetails.headBranch}`);
             }
@@ -36562,6 +36635,7 @@ async function run() {
         const pm = detectPackageManager(workspaceDir, pmInput);
         const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
         core.info(`[SyncMyDep] Active package manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
+        await ensurePackageManagerInstalled(pm);
         if (!checkPackageJsonExists(workspaceDir, pm)) {
             throw new Error(`Package manifest was not found in ${workspaceDir}`);
         }
