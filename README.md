@@ -1,5 +1,11 @@
 # 🔄 SyncMyDep
 
+<br>
+
+<img align="right" src="/images/drawing.svg" width=200 alt="Wonderfull drawing"/>
+
+<br>
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/nivinvysakh/syncmydep/blob/main/LICENSE)
 [![GitHub Release](https://img.shields.io/github/v/release/nivinvysakh/syncmydep?color=purple&label=latest%20release)](https://github.com/nivinvysakh/syncmydep/releases/latest)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
@@ -40,15 +46,15 @@ name: Dependency Sync & Audit
 
 on:
   schedule:
-    - cron: '0 8 * * 1' # Runs every Monday at 08:00 UTC
-  workflow_dispatch:     # Allows manual trigger from GitHub UI
+    - cron: "0 8 * * 1" # Runs every Monday at 08:00 UTC
+  workflow_dispatch: # Allows manual trigger from GitHub UI
   push:
     paths:
-      - 'package.json'
-      - '.syncmydep.yml'
-      - 'pnpm-workspace.yaml'
-      - 'bun.lock'
-      - 'deno.json'
+      - "package.json"
+      - ".syncmydep.yml"
+      - "pnpm-workspace.yaml"
+      - "bun.lock"
+      - "deno.json"
     branches:
       - main
 
@@ -76,8 +82,8 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # All settings can be defined in .syncmydep.yml or overridden below:
-          sync-lockfile: 'true'
-          fix-audit: 'true'
+          sync-lockfile: "true"
+          fix-audit: "true"
 ```
 
 ---
@@ -118,10 +124,10 @@ jobs:
         uses: nivinvysakh/syncmydep@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-trigger: 'syncdep'
-          require-owner: 'true'
-          sync-lockfile: 'true'
-          fix-audit: 'true'
+          comment-trigger: "syncdep"
+          require-owner: "true"
+          sync-lockfile: "true"
+          fix-audit: "true"
 ```
 
 ---
@@ -148,7 +154,7 @@ jobs:
           node-version: 20
       - uses: nivinvysakh/syncmydep@v1
         with:
-          check-only: 'true'
+          check-only: "true"
 ```
 
 ---
@@ -158,19 +164,19 @@ jobs:
 You can create a `.syncmydep.yml` (or `.syncmydeprc.yml`) in your repository root to configure default behavior across all workflows:
 
 ```yaml
-package-manager: 'auto'
+package-manager: "auto"
 sync-lockfile: true
 fix-audit: true
-audit-level: 'moderate'
+audit-level: "moderate"
 check-only: false
 direct-push: false
-pr-branch: 'syncmydep/dependency-fix'
-pr-title: 'chore(deps): synchronize dependencies'
-commit-message: 'chore(deps): update lockfile'
+pr-branch: "syncmydep/dependency-fix"
+pr-title: "chore(deps): synchronize dependencies"
+commit-message: "chore(deps): update lockfile"
 pr-labels:
-  - 'dependencies'
-  - 'automated-pr'
-comment-trigger: 'syncdep'
+  - "dependencies"
+  - "automated-pr"
+comment-trigger: "syncdep"
 require-owner: true
 ```
 
@@ -178,45 +184,47 @@ require-owner: true
 
 ## ⚙️ Inputs Reference
 
-| Input | Description | Required | Default |
-| :--- | :--- | :---: | :--- |
-| `github-token` | GitHub token for git push and opening PRs (`GITHUB_TOKEN` or PAT) | No | `${{ github.token }}` |
-| `package-manager` | Package manager: `auto`, `npm`, `yarn`, `pnpm`, `bun`, `deno` | No | `auto` |
-| `working-directory` | Path to directory containing package manifest and lockfile | No | `.` |
-| `config-file` | Optional path to custom `.syncmydep.yml` config file | No | `""` |
-| `sync-lockfile` | Synchronize lockfile with package specifications | No | `true` |
-| `fix-audit` | Run security vulnerability auto-fix | No | `true` |
-| `audit-level` | Minimum vulnerability severity: `low`, `moderate`, `high`, `critical` | No | `moderate` |
-| `check-only` | Dry-run CI gating mode that emits step annotations and exits with code `1` on desync | No | `false` |
-| `direct-push` | Commit and push directly to open PR branch on `pull_request` triggers | No | `false` |
-| `pr-branch` | Branch name to push fixes to | No | `syncmydep/dependency-fix` |
-| `pr-title` | Title for the generated Pull Request | No | `chore(deps): synchronize package.json and lockfile issues` |
-| `commit-message` | Commit message for the updates | No | `chore(deps): synchronize package.json and lockfile issues` |
-| `pr-labels` | Comma-separated labels to attach to the PR | No | `dependencies, automated-pr` |
-| `pr-assignees` | Comma-separated usernames to assign | No | `""` |
-| `pr-reviewers` | Comma-separated usernames to request review from | No | `""` |
-| `comment-trigger` | Keyword that triggers sync on a PR comment | No | `syncdep` |
-| `require-owner` | Restrict comment trigger commands strictly to repository owners | No | `true` |
+| Input               | Description                                                                          | Required | Default                                                     |
+| :------------------ | :----------------------------------------------------------------------------------- | :------: | :---------------------------------------------------------- |
+| `github-token`      | GitHub token for git push and opening PRs (`GITHUB_TOKEN` or PAT)                    |    No    | `${{ github.token }}`                                       |
+| `package-manager`   | Package manager: `auto`, `npm`, `yarn`, `pnpm`, `bun`, `deno`                        |    No    | `auto`                                                      |
+| `working-directory` | Path to directory containing package manifest and lockfile                           |    No    | `.`                                                         |
+| `config-file`       | Optional path to custom `.syncmydep.yml` config file                                 |    No    | `""`                                                        |
+| `sync-lockfile`     | Synchronize lockfile with package specifications                                     |    No    | `true`                                                      |
+| `fix-audit`         | Run security vulnerability auto-fix                                                  |    No    | `true`                                                      |
+| `audit-level`       | Minimum vulnerability severity: `low`, `moderate`, `high`, `critical`                |    No    | `moderate`                                                  |
+| `check-only`        | Dry-run CI gating mode that emits step annotations and exits with code `1` on desync |    No    | `false`                                                     |
+| `direct-push`       | Commit and push directly to open PR branch on `pull_request` triggers                |    No    | `false`                                                     |
+| `pr-branch`         | Branch name to push fixes to                                                         |    No    | `syncmydep/dependency-fix`                                  |
+| `pr-title`          | Title for the generated Pull Request                                                 |    No    | `chore(deps): synchronize package.json and lockfile issues` |
+| `commit-message`    | Commit message for the updates                                                       |    No    | `chore(deps): synchronize package.json and lockfile issues` |
+| `pr-labels`         | Comma-separated labels to attach to the PR                                           |    No    | `dependencies, automated-pr`                                |
+| `pr-assignees`      | Comma-separated usernames to assign                                                  |    No    | `""`                                                        |
+| `pr-reviewers`      | Comma-separated usernames to request review from                                     |    No    | `""`                                                        |
+| `comment-trigger`   | Keyword that triggers sync on a PR comment                                           |    No    | `syncdep`                                                   |
+| `require-owner`     | Restrict comment trigger commands strictly to repository owners                      |    No    | `true`                                                      |
 
 ---
 
 ## 📤 Outputs Reference
 
-| Output | Description | Example |
-| :--- | :--- | :--- |
-| `changes-detected` | String boolean indicating if issues were fixed or detected | `'true'` / `'false'` |
-| `pull-request-number` | The PR number created or updated | `42` |
-| `pull-request-url` | Full URL to the Pull Request | `https://github.com/org/repo/pull/42` |
-| `modified-files` | Comma-separated list of modified files | `package.json,package-lock.json` |
+| Output                | Description                                                | Example                               |
+| :-------------------- | :--------------------------------------------------------- | :------------------------------------ |
+| `changes-detected`    | String boolean indicating if issues were fixed or detected | `'true'` / `'false'`                  |
+| `pull-request-number` | The PR number created or updated                           | `42`                                  |
+| `pull-request-url`    | Full URL to the Pull Request                               | `https://github.com/org/repo/pull/42` |
+| `modified-files`      | Comma-separated list of modified files                     | `package.json,package-lock.json`      |
 
 ---
 
 ## 🛠️ Step-by-Step Setup Guide
 
 ### Step 1: Add Workflow File
+
 Add `.github/workflows/syncmydep.yml` to your repository.
 
 ### Step 2: Configure Repository Permissions
+
 1. In your GitHub repository, navigate to **Settings** ➔ **Actions** ➔ **General**.
 2. Under **Workflow permissions**:
    - ✅ Select **"Read and write permissions"**.
