@@ -1,8 +1,6 @@
 # 🔄 SyncMyDep
 
-<br>
-
-<img align="right" src="/images/drawing.svg" width=200 alt="Wonderfull drawing"/>
+<img align="right" src="/images/drawing.png" width=200 alt="Wonderfull drawing"/>
 
 <br>
 
