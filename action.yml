@@ -1,5 +1,5 @@
 name: 'SyncMyDep - Dependency Sync & PR'
-description: 'Checks package.json & lockfile issues, auto-fixes desync and vulnerabilities, supports monorepos, Bun, Deno, Yarn Berry, and opens Pull Requests.'
+description: 'Auto-sync package.json & lockfiles, fix vulnerabilities, and create PRs across npm, yarn, pnpm, bun, and deno.'
 author: 'Nivinvysakh'
 branding:
   icon: 'git-pull-request'
