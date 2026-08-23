@@ -1,5 +1,5 @@
 name: 'SyncMyDep - Dependency Sync & PR'
-description: 'Checks package.json & lockfile issues, auto-fixes desync and vulnerabilities, and opens a Pull Request.'
+description: 'Checks package.json & lockfile issues, auto-fixes desync and vulnerabilities, supports monorepos, Bun, Deno, Yarn Berry, and opens Pull Requests.'
 author: 'Nivinvysakh'
 branding:
   icon: 'git-pull-request'
@@ -11,15 +11,19 @@ inputs:
     required: false
     default: ${{ github.token }}
   package-manager:
-    description: 'Package manager to use: "auto", "npm", "yarn", or "pnpm".'
+    description: 'Package manager to use: "auto", "npm", "yarn", "pnpm", "bun", or "deno".'
     required: false
     default: 'auto'
   working-directory:
-    description: 'Working directory containing package.json and lockfile.'
+    description: 'Working directory containing package.json / deno.json and lockfiles.'
     required: false
     default: '.'
+  config-file:
+    description: 'Optional path to .syncmydeprc.json configuration file.'
+    required: false
+    default: ''
   sync-lockfile:
-    description: 'Whether to synchronize lockfile with package.json specifications.'
+    description: 'Whether to synchronize lockfile with package specifications.'
     required: false
     default: 'true'
   fix-audit:
@@ -30,6 +34,14 @@ inputs:
     description: 'Minimum vulnerability level to fix/report: "low", "moderate", "high", "critical".'
     required: false
     default: 'moderate'
+  check-only:
+    description: 'Dry-run CI gating mode that emits step annotations and exits with code 1 on desync/vulnerabilities.'
+    required: false
+    default: 'false'
+  direct-push:
+    description: 'Whether to commit and push directly to open pull request branches when triggered on pull_request.'
+    required: false
+    default: 'false'
   pr-branch:
     description: 'Branch name to create or update for the Pull Request.'
     required: false

@@ -4,6 +4,7 @@ import * as github from '@actions/github';
 
 import {
   detectPackageManager,
+  detectYarnVariant,
   checkPackageJsonExists,
   inspectAudit
 } from './detector';
@@ -12,7 +13,8 @@ import {
   syncLockfile,
   runAuditFix,
   getGitStatus,
-  getGitDiffStat
+  getGitDiffStat,
+  parseDependencyDiffs
 } from './fixer';
 
 import {
@@ -25,40 +27,68 @@ import {
   createOrUpdatePullRequest
 } from './git-pr';
 
+import { loadConfigFile } from './config';
+import { detectWorkspace } from './workspace';
 import { buildMarkdownSummary, buildCommentSummary } from './summary';
 import { AuditInspectionResult } from './types';
 
 async function run(): Promise<void> {
   try {
-    const token = core.getInput('github-token') || process.env.GITHUB_TOKEN;
-    const pmInput = core.getInput('package-manager') || 'auto';
+    const customConfigPath = core.getInput('config-file') || '';
     const workingDirInput = core.getInput('working-directory') || '.';
-    const syncLockfileOption = core.getBooleanInput('sync-lockfile');
-    const fixAuditOption = core.getBooleanInput('fix-audit');
-    const auditLevel = core.getInput('audit-level') || 'moderate';
-    const branchName = core.getInput('pr-branch') || 'syncmydep/dependency-fix';
-    const prTitle = core.getInput('pr-title') || 'chore(deps): synchronize package.json and lockfile issues';
-    const commitMessage = core.getInput('commit-message') || 'chore(deps): synchronize package.json and lockfile issues';
-    const labelsInput = core.getInput('pr-labels') || '';
-    const assigneesInput = core.getInput('pr-assignees') || '';
-    const reviewersInput = core.getInput('pr-reviewers') || '';
-    const commentTrigger = (core.getInput('comment-trigger') || 'syncdep').toLowerCase().trim();
+    const workspaceDir = path.resolve(process.cwd(), workingDirInput);
+
+    // 1. Load .syncmydeprc.json if present
+    const fileConfig = loadConfigFile(workspaceDir, customConfigPath);
+
+    // 2. Resolve Action inputs (Action input > file config > default)
+    const token = core.getInput('github-token') || process.env.GITHUB_TOKEN;
+    const pmInput = core.getInput('package-manager') || fileConfig.packageManager || 'auto';
+    const syncLockfileOption = core.getInput('sync-lockfile') !== ''
+      ? core.getBooleanInput('sync-lockfile')
+      : fileConfig.syncLockfile ?? true;
+    const fixAuditOption = core.getInput('fix-audit') !== ''
+      ? core.getBooleanInput('fix-audit')
+      : fileConfig.fixAudit ?? true;
+    const auditLevel = core.getInput('audit-level') || fileConfig.auditLevel || 'moderate';
+    const checkOnly = core.getInput('check-only') !== ''
+      ? core.getBooleanInput('check-only')
+      : fileConfig.checkOnly ?? false;
+    const directPush = core.getInput('direct-push') !== ''
+      ? core.getBooleanInput('direct-push')
+      : fileConfig.directPush ?? false;
+    const branchName = core.getInput('pr-branch') || fileConfig.prBranch || 'syncmydep/dependency-fix';
+    const prTitle = core.getInput('pr-title') || fileConfig.prTitle || 'chore(deps): synchronize package.json and lockfile issues';
+    const commitMessage = core.getInput('commit-message') || fileConfig.commitMessage || 'chore(deps): synchronize package.json and lockfile issues';
+    const labelsInput = core.getInput('pr-labels') || (fileConfig.prLabels ? fileConfig.prLabels.join(',') : '');
+    const assigneesInput = core.getInput('pr-assignees') || (fileConfig.prAssignees ? fileConfig.prAssignees.join(',') : '');
+    const reviewersInput = core.getInput('pr-reviewers') || (fileConfig.prReviewers ? fileConfig.prReviewers.join(',') : '');
+    const commentTrigger = (core.getInput('comment-trigger') || fileConfig.commentTrigger || 'syncdep').toLowerCase().trim();
+    const requireOwner = core.getInput('require-owner') !== ''
+      ? core.getBooleanInput('require-owner')
+      : fileConfig.requireOwner ?? true;
 
     const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const reviewers = reviewersInput ? reviewersInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
 
-    const workspaceDir = path.resolve(process.cwd(), workingDirInput);
     core.info(`[SyncMyDep] Working directory: ${workspaceDir}`);
+
+    // 3. Workspace / Monorepo Detection
+    const workspaceInfo = detectWorkspace(workspaceDir);
+    if (workspaceInfo.isMonorepo) {
+      core.info(`[SyncMyDep] Monorepo detected: type=${workspaceInfo.type}, packages=${workspaceInfo.packages.length}`);
+    }
 
     const eventName = github.context.eventName;
     const isIssueComment = eventName === 'issue_comment';
+    const isPullRequest = eventName === 'pull_request';
 
+    // 4. Handle PR Comment Trigger
     if (isIssueComment) {
       const issue = github.context.payload.issue;
       const comment = github.context.payload.comment;
 
-      // Ensure this comment is on a Pull Request
       if (!issue || !issue.pull_request) {
         core.info('[SyncMyDep] Comment is on a regular issue, not a Pull Request. Skipping.');
         return;
@@ -83,7 +113,6 @@ async function run(): Promise<void> {
       const commenter = comment?.user?.login || 'unknown';
       const authorAssociation = (comment?.author_association || '').toUpperCase();
 
-      const requireOwner = core.getInput('require-owner') !== 'false';
       const isOwner = commenter.toLowerCase() === owner.toLowerCase() || authorAssociation === 'OWNER';
 
       if (requireOwner && !isOwner) {
@@ -103,25 +132,23 @@ async function run(): Promise<void> {
 
       core.info(`[SyncMyDep] Authorized trigger by @${commenter} on PR #${prNumber}`);
 
-      // Add acknowledgement reaction (eyes)
       if (comment?.id) {
         await addCommentReaction(octokit, owner, repo, comment.id, 'eyes');
       }
 
-      // Fetch PR details to know head branch
       const prDetails = await getPullRequestDetails(octokit, owner, repo, prNumber);
       core.info(`[SyncMyDep] PR #${prNumber} head branch: ${prDetails.headBranch}`);
 
-      // Checkout PR branch
       await configureGitUser(workspaceDir);
       await checkoutBranch(workspaceDir, prDetails.headBranch, prNumber);
 
-      if (!checkPackageJsonExists(workspaceDir)) {
-        throw new Error(`package.json was not found in ${workspaceDir} on branch ${prDetails.headBranch}`);
-      }
-
       const pm = detectPackageManager(workspaceDir, pmInput);
-      core.info(`[SyncMyDep] Active package manager: ${pm}`);
+      const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
+      core.info(`[SyncMyDep] Active package manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
+
+      if (!checkPackageJsonExists(workspaceDir, pm)) {
+        throw new Error(`Package manifest was not found in ${workspaceDir} on branch ${prDetails.headBranch}`);
+      }
 
       let auditBefore: AuditInspectionResult | null = null;
       let auditAfter: AuditInspectionResult | null = null;
@@ -132,7 +159,7 @@ async function run(): Promise<void> {
 
       let syncedLockfile = false;
       if (syncLockfileOption) {
-        const syncResult = await syncLockfile(workspaceDir, pm);
+        const syncResult = await syncLockfile(workspaceDir, pm, yarnVariant);
         syncedLockfile = syncResult.success;
       }
 
@@ -170,10 +197,15 @@ async function run(): Promise<void> {
       core.setOutput('modified-files', changedFiles.join(','));
 
       const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
+      const dependencyDiffs = await parseDependencyDiffs(workspaceDir, changedFiles);
+
       const commentMarkdown = buildCommentSummary({
         pm,
+        yarnVariant,
+        workspaceInfo,
         changedFiles,
         diffStat,
+        dependencyDiffs,
         syncedLockfile,
         fixedAudit,
         auditBefore,
@@ -208,13 +240,14 @@ async function run(): Promise<void> {
       return;
     }
 
-    // Standard run (push / schedule / workflow_dispatch)
-    if (!checkPackageJsonExists(workspaceDir)) {
-      throw new Error(`package.json was not found in ${workspaceDir}`);
-    }
-
+    // 5. Standard run (check-only / pull_request direct-push / push / schedule)
     const pm = detectPackageManager(workspaceDir, pmInput);
-    core.info(`[SyncMyDep] Active package manager: ${pm}`);
+    const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
+    core.info(`[SyncMyDep] Active package manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
+
+    if (!checkPackageJsonExists(workspaceDir, pm)) {
+      throw new Error(`Package manifest was not found in ${workspaceDir}`);
+    }
 
     let auditBefore: AuditInspectionResult | null = null;
     let auditAfter: AuditInspectionResult | null = null;
@@ -226,12 +259,12 @@ async function run(): Promise<void> {
 
     let syncedLockfile = false;
     if (syncLockfileOption) {
-      const syncResult = await syncLockfile(workspaceDir, pm);
+      const syncResult = await syncLockfile(workspaceDir, pm, yarnVariant);
       syncedLockfile = syncResult.success;
     }
 
     let fixedAudit = false;
-    if (fixAuditOption) {
+    if (fixAuditOption && !checkOnly) {
       const auditResult = await runAuditFix(workspaceDir, pm, auditLevel);
       fixedAudit = auditResult.success;
       auditAfter = await inspectAudit(workspaceDir, pm);
@@ -239,6 +272,41 @@ async function run(): Promise<void> {
 
     const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
 
+    // 6. Check-Only / CI Gating Mode
+    if (checkOnly) {
+      if (!hasChanges && (!auditBefore || auditBefore.total === 0)) {
+        core.info('✅ [SyncMyDep] Check-Only passed: all dependencies and lockfiles are synchronized and healthy.');
+        core.setOutput('changes-detected', 'false');
+        core.setOutput('modified-files', '');
+
+        await core.summary
+          .addHeading('SyncMyDep: CI Check Passed')
+          .addRaw('✅ **All dependencies and lockfiles are synchronized.** No action required.')
+          .write();
+        return;
+      }
+
+      core.setOutput('changes-detected', 'true');
+      core.setOutput('modified-files', changedFiles.join(','));
+
+      for (const file of changedFiles) {
+        core.error(`[SyncMyDep] Lockfile desynchronization detected in: ${file}`, { file });
+      }
+
+      if (auditBefore && auditBefore.total > 0) {
+        core.error(`[SyncMyDep] ${auditBefore.total} security vulnerabilities detected in dependencies.`);
+      }
+
+      await core.summary
+        .addHeading('SyncMyDep: CI Check Failed')
+        .addRaw(`❌ **Desynchronization or security vulnerabilities detected in:** \`${changedFiles.join(', ')}\`\n\nRun SyncMyDep to automatically fix and sync your lockfiles.`)
+        .write();
+
+      core.setFailed(`SyncMyDep Check-Only failed: lockfiles are desynchronized or vulnerabilities were detected.`);
+      return;
+    }
+
+    // 7. No changes detected
     if (!hasChanges) {
       core.info('✅ [SyncMyDep] No dependency issues or lockfile desync detected. Everything is up-to-date!');
       core.setOutput('changes-detected', 'false');
@@ -252,15 +320,21 @@ async function run(): Promise<void> {
       return;
     }
 
+    // 8. Changes detected
     core.info(`[SyncMyDep] Changes detected in files: ${changedFiles.join(', ')}`);
     core.setOutput('changes-detected', 'true');
     core.setOutput('modified-files', changedFiles.join(','));
 
     const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
+    const dependencyDiffs = await parseDependencyDiffs(workspaceDir, changedFiles);
+
     const prBody = buildMarkdownSummary({
       pm,
+      yarnVariant,
+      workspaceInfo,
       changedFiles,
       diffStat,
+      dependencyDiffs,
       syncedLockfile,
       fixedAudit,
       auditBefore,
@@ -274,6 +348,38 @@ async function run(): Promise<void> {
 
     await configureGitUser(workspaceDir);
 
+    // 9. Direct Push Mode on pull_request triggers
+    if ((isPullRequest || directPush) && github.context.payload.pull_request) {
+      const pr = github.context.payload.pull_request;
+      const headBranch = pr.head.ref;
+      const headRepo = pr.head.repo?.full_name;
+      const currentRepo = `${github.context.repo.owner}/${github.context.repo.repo}`;
+
+      if (headRepo === currentRepo) {
+        core.info(`[SyncMyDep] Direct Push enabled on PR #${pr.number} (branch: ${headBranch}). Pushing fixes...`);
+        const committed = await commitAndPushChanges({
+          workspaceDir,
+          branch: headBranch,
+          commitMessage,
+          files: changedFiles
+        });
+
+        if (committed) {
+          const octokit = github.getOctokit(token);
+          await postIssueComment(
+            octokit,
+            github.context.repo.owner,
+            github.context.repo.repo,
+            pr.number,
+            `🔄 **SyncMyDep**: Automatically synchronized dependencies and updated \`${headBranch}\` in place.\n\n${prBody}`
+          );
+          core.info(`[SyncMyDep] Successfully direct-pushed to PR #${pr.number}`);
+          return;
+        }
+      }
+    }
+
+    // 10. Create or Update Pull Request
     const committed = await commitAndPushChanges({
       workspaceDir,
       branch: branchName,
@@ -289,7 +395,6 @@ async function run(): Promise<void> {
     const octokit = github.getOctokit(token);
     const { owner, repo } = github.context.repo;
 
-    // Detect base branch
     let baseBranch = 'main';
     if (github.context.ref && github.context.ref.startsWith('refs/heads/')) {
       baseBranch = github.context.ref.replace('refs/heads/', '');

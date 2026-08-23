@@ -1,6 +1,51 @@
 import type { getOctokit } from '@actions/github';
 
-export type PackageManager = 'npm' | 'yarn' | 'pnpm';
+export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun' | 'deno';
+
+export type YarnVariant = 'classic' | 'berry';
+
+export type WorkspaceType =
+  | 'none'
+  | 'npm'
+  | 'pnpm'
+  | 'yarn'
+  | 'bun'
+  | 'turbo'
+  | 'lerna'
+  | 'nx';
+
+export interface WorkspaceInfo {
+  isMonorepo: boolean;
+  type: WorkspaceType;
+  patterns: string[];
+  packages: string[];
+}
+
+export interface DependencyDiff {
+  name: string;
+  type: 'prod' | 'dev' | 'peer' | 'optional';
+  oldVersion?: string;
+  newVersion?: string;
+  changeType: 'added' | 'upgraded' | 'downgraded' | 'removed';
+}
+
+export interface SyncMyDepConfig {
+  packageManager?: string;
+  workingDirectory?: string;
+  syncLockfile?: boolean;
+  fixAudit?: boolean;
+  auditLevel?: string;
+  checkOnly?: boolean;
+  directPush?: boolean;
+  prBranch?: string;
+  prTitle?: string;
+  commitMessage?: string;
+  prLabels?: string[];
+  prAssignees?: string[];
+  prReviewers?: string[];
+  commentTrigger?: string;
+  requireOwner?: boolean;
+}
 
 export interface AuditInspectionResult {
   total: number;
@@ -20,8 +65,11 @@ export interface GitStatusResult {
 
 export interface SummaryOptions {
   pm: PackageManager;
+  yarnVariant?: YarnVariant;
+  workspaceInfo?: WorkspaceInfo;
   changedFiles: string[];
   diffStat: string;
+  dependencyDiffs?: DependencyDiff[];
   syncedLockfile: boolean;
   fixedAudit: boolean;
   auditBefore: AuditInspectionResult | null;

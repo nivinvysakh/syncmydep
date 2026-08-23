@@ -1,6 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { detectPackageManager, checkPackageJsonExists, getLockfileName } from '../src/detector';
+import {
+  detectPackageManager,
+  detectYarnVariant,
+  checkPackageJsonExists,
+  getLockfileName
+} from '../src/detector';
 
 describe('detector', () => {
   const tempDir = path.join(__dirname, 'fixtures');
@@ -17,16 +22,20 @@ describe('detector', () => {
     }
   });
 
-  test('getLockfileName returns corresponding lockfile', () => {
+  test('getLockfileName returns corresponding lockfile for all managers', () => {
     expect(getLockfileName('npm')).toBe('package-lock.json');
     expect(getLockfileName('yarn')).toBe('yarn.lock');
     expect(getLockfileName('pnpm')).toBe('pnpm-lock.yaml');
+    expect(getLockfileName('bun')).toBe('bun.lock');
+    expect(getLockfileName('deno')).toBe('deno.lock');
   });
 
   test('detectPackageManager respects explicit package manager input', () => {
     expect(detectPackageManager(tempDir, 'yarn')).toBe('yarn');
     expect(detectPackageManager(tempDir, 'pnpm')).toBe('pnpm');
     expect(detectPackageManager(tempDir, 'npm')).toBe('npm');
+    expect(detectPackageManager(tempDir, 'bun')).toBe('bun');
+    expect(detectPackageManager(tempDir, 'deno')).toBe('deno');
   });
 
   test('checkPackageJsonExists returns true if file exists', () => {
@@ -35,6 +44,25 @@ describe('detector', () => {
     expect(checkPackageJsonExists(tempDir)).toBe(true);
     fs.unlinkSync(pkgPath);
     expect(checkPackageJsonExists(tempDir)).toBe(false);
+  });
+
+  test('detectPackageManager detects bun from bun.lock / bun.lockb', () => {
+    const bunPath = path.join(tempDir, 'bun.lock');
+    fs.writeFileSync(bunPath, '');
+    expect(detectPackageManager(tempDir, 'auto')).toBe('bun');
+    fs.unlinkSync(bunPath);
+
+    const bunbPath = path.join(tempDir, 'bun.lockb');
+    fs.writeFileSync(bunbPath, '');
+    expect(detectPackageManager(tempDir, 'auto')).toBe('bun');
+    fs.unlinkSync(bunbPath);
+  });
+
+  test('detectPackageManager detects deno from deno.lock', () => {
+    const denoPath = path.join(tempDir, 'deno.lock');
+    fs.writeFileSync(denoPath, '');
+    expect(detectPackageManager(tempDir, 'auto')).toBe('deno');
+    fs.unlinkSync(denoPath);
   });
 
   test('detectPackageManager detects pnpm from pnpm-lock.yaml', () => {
@@ -49,6 +77,18 @@ describe('detector', () => {
     fs.writeFileSync(yarnPath, '');
     expect(detectPackageManager(tempDir, 'auto')).toBe('yarn');
     fs.unlinkSync(yarnPath);
+  });
+
+  test('detectYarnVariant identifies Berry vs Classic', () => {
+    const yarnRc = path.join(tempDir, '.yarnrc.yml');
+    fs.writeFileSync(yarnRc, 'nodeLinker: node-modules\n');
+    expect(detectYarnVariant(tempDir)).toBe('berry');
+    fs.unlinkSync(yarnRc);
+
+    const yarnLock = path.join(tempDir, 'yarn.lock');
+    fs.writeFileSync(yarnLock, '# yarn lockfile v1\n');
+    expect(detectYarnVariant(tempDir)).toBe('classic');
+    fs.unlinkSync(yarnLock);
   });
 
   test('detectPackageManager defaults to npm if package-lock.json exists or no lockfile', () => {

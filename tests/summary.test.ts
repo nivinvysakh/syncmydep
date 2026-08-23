@@ -1,11 +1,21 @@
 import { buildMarkdownSummary, buildCommentSummary } from '../src/summary';
 
 describe('summary builder', () => {
-  test('builds accurate markdown table and stats for new PR', () => {
+  test('builds accurate markdown table and stats for new PR with monorepo & diffs', () => {
     const summary = buildMarkdownSummary({
-      pm: 'npm',
-      changedFiles: ['package.json', 'package-lock.json'],
-      diffStat: 'package-lock.json | 10 +++++-----',
+      pm: 'pnpm',
+      workspaceInfo: {
+        isMonorepo: true,
+        type: 'pnpm',
+        patterns: ['packages/*'],
+        packages: ['packages/core', 'packages/web']
+      },
+      changedFiles: ['package.json', 'pnpm-lock.yaml'],
+      diffStat: 'pnpm-lock.yaml | 10 +++++-----',
+      dependencyDiffs: [
+        { name: 'typescript', type: 'prod', oldVersion: '5.0.0', newVersion: '5.5.0', changeType: 'upgraded' },
+        { name: 'zod', type: 'prod', newVersion: '3.22.0', changeType: 'added' }
+      ],
       syncedLockfile: true,
       fixedAudit: true,
       auditBefore: { total: 2, summary: { high: 2 }, raw: null },
@@ -13,19 +23,22 @@ describe('summary builder', () => {
     });
 
     expect(summary).toContain('SyncMyDep: Automated Dependency Synchronization');
-    expect(summary).toContain('`npm`');
-    expect(summary).toContain('`package.json`');
-    expect(summary).toContain('`package-lock.json`');
-    expect(summary).toContain('package-lock.json | 10 +++++-----');
-    expect(summary).toContain('Initial Vulnerabilities Detected**: 2');
-    expect(summary).toContain('Remaining Vulnerabilities After Fix**: 0');
+    expect(summary).toContain('`pnpm`');
+    expect(summary).toContain('Monorepo / Workspace**: `pnpm` (2 workspace packages)');
+    expect(summary).toContain('`typescript`');
+    expect(summary).toContain('`5.0.0`');
+    expect(summary).toContain('`5.5.0`');
+    expect(summary).toContain('`zod`');
+    expect(summary).toContain('✨ Added');
+    expect(summary).toContain('pnpm-lock.yaml | 10 +++++-----');
   });
 
-  test('builds accurate markdown comment for PR comment trigger', () => {
+  test('builds accurate markdown comment for PR comment trigger with Yarn Berry', () => {
     const comment = buildCommentSummary({
-      pm: 'npm',
-      changedFiles: ['package-lock.json'],
-      diffStat: 'package-lock.json | 20 ++++++++',
+      pm: 'yarn',
+      yarnVariant: 'berry',
+      changedFiles: ['yarn.lock'],
+      diffStat: 'yarn.lock | 20 ++++++++',
       syncedLockfile: true,
       fixedAudit: true,
       auditBefore: { total: 1, summary: { high: 1 }, raw: null },
@@ -35,16 +48,16 @@ describe('summary builder', () => {
     });
 
     expect(comment).toContain('SyncMyDep: Dependencies Synchronized on `feature/auth-fix`');
+    expect(comment).toContain('`yarn (berry)`');
     expect(comment).toContain('@nivinvysakh');
-    expect(comment).toContain('`package-lock.json`');
+    expect(comment).toContain('`yarn.lock`');
     expect(comment).toContain('🔄 Synchronized & Pushed');
-    expect(comment).toContain('package-lock.json | 20 ++++++++');
   });
 
   test('handles clean audit and skipped actions gracefully', () => {
     const summary = buildMarkdownSummary({
-      pm: 'yarn',
-      changedFiles: ['yarn.lock'],
+      pm: 'bun',
+      changedFiles: ['bun.lock'],
       diffStat: '',
       syncedLockfile: true,
       fixedAudit: false,
@@ -52,8 +65,8 @@ describe('summary builder', () => {
       auditAfter: null
     });
 
-    expect(summary).toContain('`yarn`');
+    expect(summary).toContain('`bun`');
     expect(summary).toContain('⏭️ Skipped');
-    expect(summary).toContain('`yarn.lock`');
+    expect(summary).toContain('`bun.lock`');
   });
 });

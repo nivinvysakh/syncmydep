@@ -31858,32 +31858,93 @@ var exec = __nccwpck_require__(5236);
 function detectPackageManager(workspaceDir, specifiedPm = 'auto') {
     if (specifiedPm && specifiedPm !== 'auto') {
         const lower = specifiedPm.toLowerCase();
-        if (lower === 'npm' || lower === 'yarn' || lower === 'pnpm') {
+        if (lower === 'npm' ||
+            lower === 'yarn' ||
+            lower === 'pnpm' ||
+            lower === 'bun' ||
+            lower === 'deno') {
             return lower;
         }
     }
+    // Bun check
+    const bunLock = external_path_.join(workspaceDir, 'bun.lock');
+    const bunLockb = external_path_.join(workspaceDir, 'bun.lockb');
+    if (external_fs_.existsSync(bunLock) || external_fs_.existsSync(bunLockb))
+        return 'bun';
+    // Deno check
+    const denoLock = external_path_.join(workspaceDir, 'deno.lock');
+    const denoJson = external_path_.join(workspaceDir, 'deno.json');
+    const denoJsonc = external_path_.join(workspaceDir, 'deno.jsonc');
+    if (external_fs_.existsSync(denoLock) || external_fs_.existsSync(denoJson) || external_fs_.existsSync(denoJsonc)) {
+        // If deno.lock exists or pure deno project without package-lock/yarn.lock/pnpm-lock
+        if (external_fs_.existsSync(denoLock) ||
+            (!external_fs_.existsSync(external_path_.join(workspaceDir, 'package-lock.json')) &&
+                !external_fs_.existsSync(external_path_.join(workspaceDir, 'yarn.lock')) &&
+                !external_fs_.existsSync(external_path_.join(workspaceDir, 'pnpm-lock.yaml')))) {
+            return 'deno';
+        }
+    }
+    // pnpm check
     const pnpmLock = external_path_.join(workspaceDir, 'pnpm-lock.yaml');
     if (external_fs_.existsSync(pnpmLock))
         return 'pnpm';
+    // yarn check
     const yarnLock = external_path_.join(workspaceDir, 'yarn.lock');
-    if (external_fs_.existsSync(yarnLock))
+    const yarnRcYml = external_path_.join(workspaceDir, '.yarnrc.yml');
+    if (external_fs_.existsSync(yarnLock) || external_fs_.existsSync(yarnRcYml))
         return 'yarn';
+    // npm check
     const npmLock = external_path_.join(workspaceDir, 'package-lock.json');
     if (external_fs_.existsSync(npmLock))
         return 'npm';
     return 'npm';
 }
 /**
- * Checks if package.json exists in the specified directory.
+ * Detects whether a Yarn project is using Yarn Classic (v1) or Yarn Berry (v2-v4).
  */
-function checkPackageJsonExists(workspaceDir) {
+function detectYarnVariant(workspaceDir) {
+    const yarnRcYml = external_path_.join(workspaceDir, '.yarnrc.yml');
+    const yarnDir = external_path_.join(workspaceDir, '.yarn');
+    if (external_fs_.existsSync(yarnRcYml) || external_fs_.existsSync(yarnDir)) {
+        return 'berry';
+    }
+    const yarnLock = external_path_.join(workspaceDir, 'yarn.lock');
+    if (external_fs_.existsSync(yarnLock)) {
+        try {
+            const header = external_fs_.readFileSync(yarnLock, 'utf8').slice(0, 100);
+            if (header.includes('# yarn lockfile v1')) {
+                return 'classic';
+            }
+            if (header.includes('__metadata') || header.includes('yarnPath') || header.includes('specVersion')) {
+                return 'berry';
+            }
+        }
+        catch {
+            // ignore
+        }
+    }
+    return 'classic';
+}
+/**
+ * Checks if package manifest exists in the specified directory.
+ */
+function checkPackageJsonExists(workspaceDir, pm = 'npm') {
+    if (pm === 'deno') {
+        return (external_fs_.existsSync(external_path_.join(workspaceDir, 'deno.json')) ||
+            external_fs_.existsSync(external_path_.join(workspaceDir, 'deno.jsonc')) ||
+            external_fs_.existsSync(external_path_.join(workspaceDir, 'package.json')));
+    }
     return external_fs_.existsSync(external_path_.join(workspaceDir, 'package.json'));
 }
 /**
- * Gets the lockfile name associated with a package manager.
+ * Gets primary lockfile name associated with a package manager.
  */
 function getLockfileName(pm) {
     switch (pm) {
+        case 'bun':
+            return 'bun.lock';
+        case 'deno':
+            return 'deno.lock';
         case 'pnpm':
             return 'pnpm-lock.yaml';
         case 'yarn':
@@ -31925,6 +31986,43 @@ async function inspectAudit(workspaceDir, pm) {
                 };
             }
         }
+        else if (pm === 'pnpm') {
+            await exec.exec('pnpm', ['audit', '--json'], options);
+            if (stdout) {
+                const parsed = JSON.parse(stdout);
+                const metadata = parsed.metadata || {};
+                const vulnCounts = metadata.vulnerabilities || {};
+                const total = Object.values(vulnCounts).reduce((a, b) => a + b, 0);
+                return {
+                    total: total || 0,
+                    summary: vulnCounts,
+                    raw: parsed
+                };
+            }
+        }
+        else if (pm === 'yarn') {
+            await exec.exec('yarn', ['audit', '--json'], options);
+            if (stdout) {
+                let total = 0;
+                const lines = stdout.trim().split('\n');
+                for (const line of lines) {
+                    try {
+                        const data = JSON.parse(line);
+                        if (data.type === 'auditAdvisory') {
+                            total++;
+                        }
+                    }
+                    catch {
+                        // ignore
+                    }
+                }
+                return {
+                    total,
+                    summary: { advisories: total },
+                    raw: null
+                };
+            }
+        }
     }
     catch {
         // If parsing fails, return empty
@@ -31936,12 +32034,41 @@ async function inspectAudit(workspaceDir, pm) {
 
 
 /**
- * Synchronizes the lockfile with package.json specifications.
+ * Runs the appropriate command to synchronize the lockfile without running build scripts.
  */
-async function syncLockfile(workspaceDir, pm) {
-    core.info(`[SyncMyDep] Synchronizing lockfile using ${pm}...`);
+async function syncLockfile(workspaceDir, pm, yarnVariant = 'classic') {
     let output = '';
-    let errorOutput = '';
+    let command = 'npm';
+    let args = [];
+    switch (pm) {
+        case 'bun':
+            command = 'bun';
+            args = ['install', '--lockfile-only'];
+            break;
+        case 'deno':
+            command = 'deno';
+            args = ['install'];
+            break;
+        case 'pnpm':
+            command = 'pnpm';
+            args = ['install', '--lockfile-only', '--no-frozen-lockfile'];
+            break;
+        case 'yarn':
+            command = 'yarn';
+            if (yarnVariant === 'berry') {
+                args = ['install', '--mode', 'update-lockfile'];
+            }
+            else {
+                args = ['install', '--prefer-offline', '--ignore-scripts'];
+            }
+            break;
+        case 'npm':
+        default:
+            command = 'npm';
+            args = ['install', '--package-lock-only', '--no-audit', '--no-fund'];
+            break;
+    }
+    core.info(`[SyncMyDep] Synchronizing lockfile using ${command} ${args.join(' ')}...`);
     const options = {
         cwd: workspaceDir,
         ignoreReturnCode: true,
@@ -31950,35 +32077,64 @@ async function syncLockfile(workspaceDir, pm) {
                 output += data.toString();
             },
             stderr: (data) => {
-                errorOutput += data.toString();
+                output += data.toString();
             }
         }
     };
-    let exitCode = 0;
-    if (pm === 'npm') {
-        exitCode = await exec.exec('npm', ['install', '--package-lock-only', '--no-audit', '--no-fund'], options);
+    const exitCode = await exec.exec(command, args, options);
+    // Fallback for Bun if --lockfile-only is not supported on older versions
+    if (exitCode !== 0 && pm === 'bun') {
+        core.info('[SyncMyDep] Retrying Bun synchronization with bun install...');
+        const retryCode = await exec.exec('bun', ['install'], options);
+        return {
+            success: retryCode === 0,
+            output
+        };
     }
-    else if (pm === 'yarn') {
-        exitCode = await exec.exec('yarn', ['install', '--mode', 'update-lockfile'], options);
-        if (exitCode !== 0) {
-            exitCode = await exec.exec('yarn', ['install'], options);
-        }
-    }
-    else if (pm === 'pnpm') {
-        exitCode = await exec.exec('pnpm', ['install', '--lockfile-only'], options);
+    // Fallback for Yarn Berry if --mode update-lockfile fails
+    if (exitCode !== 0 && pm === 'yarn' && yarnVariant === 'berry') {
+        core.info('[SyncMyDep] Retrying Yarn Berry synchronization with yarn install...');
+        const retryCode = await exec.exec('yarn', ['install'], options);
+        return {
+            success: retryCode === 0,
+            output
+        };
     }
     return {
         success: exitCode === 0,
-        output: output + errorOutput
+        output
     };
 }
 /**
- * Runs security audit fix to update vulnerable packages.
+ * Runs security audit fix commands if available for the package manager.
  */
 async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
-    core.info(`[SyncMyDep] Running security audit fix using ${pm} (level: ${auditLevel})...`);
     let output = '';
-    let errorOutput = '';
+    let command = '';
+    let args = [];
+    switch (pm) {
+        case 'npm':
+            command = 'npm';
+            args = ['audit', 'fix', `--audit-level=${auditLevel}`];
+            break;
+        case 'pnpm':
+            command = 'pnpm';
+            args = ['audit', '--fix'];
+            break;
+        case 'yarn':
+            command = 'yarn';
+            args = ['audit', '--fix'];
+            break;
+        case 'bun':
+            command = 'bun';
+            args = ['pm', 'audit'];
+            break;
+        case 'deno':
+        default:
+            core.info(`[SyncMyDep] Automated audit fix is not supported for ${pm}. Skipping audit fix step.`);
+            return { success: true, output: '' };
+    }
+    core.info(`[SyncMyDep] Running security audit fix using ${command} (level: ${auditLevel})...`);
     const options = {
         cwd: workspaceDir,
         ignoreReturnCode: true,
@@ -31987,27 +32143,18 @@ async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
                 output += data.toString();
             },
             stderr: (data) => {
-                errorOutput += data.toString();
+                output += data.toString();
             }
         }
     };
-    let exitCode = 0;
-    if (pm === 'npm') {
-        exitCode = await exec.exec('npm', ['audit', 'fix', `--audit-level=${auditLevel}`], options);
-    }
-    else if (pm === 'pnpm') {
-        exitCode = await exec.exec('pnpm', ['audit', '--fix'], options);
-    }
-    else if (pm === 'yarn') {
-        core.info('[SyncMyDep] yarn audit does not support native auto-fix; lockfile sync was applied.');
-    }
+    const exitCode = await exec.exec(command, args, options);
     return {
-        success: exitCode === 0 || exitCode === 1, // npm audit fix may return 1 if unfixable vulnerabilities remain
-        output: output + errorOutput
+        success: exitCode === 0,
+        output
     };
 }
 /**
- * Checks git status for any modified or untracked dependency files.
+ * Inspects git status to identify modified manifest and lockfiles in single-package or monorepo setups.
  */
 async function getGitStatus(workspaceDir) {
     let statusOutput = '';
@@ -32031,10 +32178,18 @@ async function getGitStatus(workspaceDir) {
         if (!match)
             continue;
         const filePath = match[1].trim().replace(/^"|"$/g, '');
+        // Check relevant manifest & lockfiles
         if (filePath.endsWith('package.json') ||
             filePath.endsWith('package-lock.json') ||
             filePath.endsWith('yarn.lock') ||
-            filePath.endsWith('pnpm-lock.yaml')) {
+            filePath.endsWith('.yarnrc.yml') ||
+            filePath.endsWith('pnpm-lock.yaml') ||
+            filePath.endsWith('pnpm-workspace.yaml') ||
+            filePath.endsWith('bun.lock') ||
+            filePath.endsWith('bun.lockb') ||
+            filePath.endsWith('deno.lock') ||
+            filePath.endsWith('deno.json') ||
+            filePath.endsWith('deno.jsonc')) {
             changedFiles.push(filePath);
         }
     }
@@ -32044,26 +32199,97 @@ async function getGitStatus(workspaceDir) {
     };
 }
 /**
- * Gets git diff summary for the changed dependency files.
+ * Computes git diff stat summary for changed files.
  */
-async function getGitDiffStat(workspaceDir, files = []) {
-    let diffStat = '';
+async function getGitDiffStat(workspaceDir, files) {
+    if (!files || files.length === 0)
+        return '';
+    let diffOutput = '';
     const options = {
         cwd: workspaceDir,
         ignoreReturnCode: true,
         silent: true,
         listeners: {
             stdout: (data) => {
-                diffStat += data.toString();
+                diffOutput += data.toString();
             }
         }
     };
-    const args = ['diff', '--stat'];
-    if (files.length > 0) {
-        args.push('--', ...files);
+    await exec.exec('git', ['diff', '--stat', '--', ...files], options);
+    return diffOutput.trim();
+}
+/**
+ * Parses package.json diffs to extract added, upgraded, or removed dependency items.
+ */
+async function parseDependencyDiffs(workspaceDir, changedFiles) {
+    const pkgFiles = changedFiles.filter((f) => f.endsWith('package.json'));
+    if (pkgFiles.length === 0)
+        return [];
+    let diffText = '';
+    const options = {
+        cwd: workspaceDir,
+        ignoreReturnCode: true,
+        silent: true,
+        listeners: {
+            stdout: (data) => {
+                diffText += data.toString();
+            }
+        }
+    };
+    await exec.exec('git', ['diff', '-U1', '--', ...pkgFiles], options);
+    if (!diffText)
+        return [];
+    const diffs = [];
+    const lines = diffText.split('\n');
+    const removedMap = new Map();
+    const addedMap = new Map();
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('-') && !trimmed.startsWith('---')) {
+            const match = trimmed.match(/^-\s*"([^"]+)":\s*"([^"]+)"/);
+            if (match) {
+                removedMap.set(match[1], match[2]);
+            }
+        }
+        else if (trimmed.startsWith('+') && !trimmed.startsWith('+++')) {
+            const match = trimmed.match(/^\+\s*"([^"]+)":\s*"([^"]+)"/);
+            if (match) {
+                addedMap.set(match[1], match[2]);
+            }
+        }
     }
-    await exec.exec('git', args, options);
-    return diffStat.trim();
+    // Detect upgrades/downgrades & added
+    for (const [pkg, newVer] of addedMap.entries()) {
+        if (removedMap.has(pkg)) {
+            const oldVer = removedMap.get(pkg);
+            removedMap.delete(pkg);
+            diffs.push({
+                name: pkg,
+                type: 'prod',
+                oldVersion: oldVer,
+                newVersion: newVer,
+                changeType: 'upgraded'
+            });
+        }
+        else {
+            diffs.push({
+                name: pkg,
+                type: 'prod',
+                newVersion: newVer,
+                changeType: 'added'
+            });
+        }
+    }
+    // Remaining in removedMap are deletions
+    for (const [pkg, oldVer] of removedMap.entries()) {
+        diffs.push({
+            name: pkg,
+            type: 'prod',
+            oldVersion: oldVer,
+            changeType: 'removed'
+        });
+    }
+    return diffs;
 }
 
 ;// CONCATENATED MODULE: ./src/git-pr.ts
@@ -32267,18 +32493,194 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
     };
 }
 
+;// CONCATENATED MODULE: ./src/config.ts
+
+
+
+const CONFIG_CANDIDATES = [
+    '.syncmydeprc.json',
+    '.syncmydeprc',
+    'syncmydep.config.json',
+    '.syncmydep.json'
+];
+/**
+ * Loads and parses the .syncmydeprc.json configuration file if present.
+ */
+function loadConfigFile(workspaceDir, customConfigPath) {
+    let targetPath = null;
+    if (customConfigPath) {
+        const resolved = external_path_.isAbsolute(customConfigPath)
+            ? customConfigPath
+            : external_path_.join(workspaceDir, customConfigPath);
+        if (external_fs_.existsSync(resolved)) {
+            targetPath = resolved;
+        }
+        else {
+            core.warning(`[SyncMyDep] Specified config-file not found: ${resolved}`);
+        }
+    }
+    if (!targetPath) {
+        for (const candidate of CONFIG_CANDIDATES) {
+            const candidatePath = external_path_.join(workspaceDir, candidate);
+            if (external_fs_.existsSync(candidatePath)) {
+                targetPath = candidatePath;
+                break;
+            }
+        }
+    }
+    if (!targetPath) {
+        return {};
+    }
+    try {
+        core.info(`[SyncMyDep] Found configuration file: ${targetPath}`);
+        const content = external_fs_.readFileSync(targetPath, 'utf8').trim();
+        if (!content)
+            return {};
+        const parsed = JSON.parse(content);
+        return parsed;
+    }
+    catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        core.warning(`[SyncMyDep] Failed to parse config file (${targetPath}): ${msg}. Using defaults.`);
+        return {};
+    }
+}
+
+;// CONCATENATED MODULE: ./src/workspace.ts
+
+
+/**
+ * Inspects a workspace directory to detect monorepo toolchains and multi-package setups.
+ */
+function detectWorkspace(workspaceDir) {
+    let type = 'none';
+    const patterns = [];
+    // Check pnpm-workspace.yaml
+    const pnpmWorkspacePath = external_path_.join(workspaceDir, 'pnpm-workspace.yaml');
+    if (external_fs_.existsSync(pnpmWorkspacePath)) {
+        type = 'pnpm';
+        try {
+            const content = external_fs_.readFileSync(pnpmWorkspacePath, 'utf8');
+            const lines = content.split('\n');
+            let inPackages = false;
+            for (const line of lines) {
+                if (line.trim().startsWith('packages:')) {
+                    inPackages = true;
+                    continue;
+                }
+                if (inPackages && line.trim().startsWith('-')) {
+                    const pattern = line.replace(/^\s*-\s*['"]?/, '').replace(/['"]?\s*$/, '');
+                    if (pattern)
+                        patterns.push(pattern);
+                }
+                else if (inPackages && line.trim() && !line.startsWith(' ') && !line.startsWith('\t')) {
+                    inPackages = false;
+                }
+            }
+        }
+        catch {
+            // ignore parsing errors
+        }
+    }
+    // Check Turborepo
+    if (external_fs_.existsSync(external_path_.join(workspaceDir, 'turbo.json'))) {
+        type = 'turbo';
+    }
+    // Check Lerna
+    if (external_fs_.existsSync(external_path_.join(workspaceDir, 'lerna.json'))) {
+        type = 'lerna';
+        try {
+            const lernaJson = JSON.parse(external_fs_.readFileSync(external_path_.join(workspaceDir, 'lerna.json'), 'utf8'));
+            if (Array.isArray(lernaJson.packages)) {
+                patterns.push(...lernaJson.packages);
+            }
+        }
+        catch {
+            // ignore
+        }
+    }
+    // Check Nx
+    if (external_fs_.existsSync(external_path_.join(workspaceDir, 'nx.json'))) {
+        type = 'nx';
+    }
+    // Check package.json workspaces (npm, yarn, bun)
+    const pkgJsonPath = external_path_.join(workspaceDir, 'package.json');
+    if (external_fs_.existsSync(pkgJsonPath)) {
+        try {
+            const pkg = JSON.parse(external_fs_.readFileSync(pkgJsonPath, 'utf8'));
+            if (pkg.workspaces) {
+                if (type === 'none') {
+                    type = 'npm';
+                }
+                if (Array.isArray(pkg.workspaces)) {
+                    patterns.push(...pkg.workspaces);
+                }
+                else if (Array.isArray(pkg.workspaces.packages)) {
+                    patterns.push(...pkg.workspaces.packages);
+                }
+            }
+        }
+        catch {
+            // ignore
+        }
+    }
+    const isMonorepo = type !== 'none' || patterns.length > 0;
+    const packages = isMonorepo ? findWorkspacePackages(workspaceDir, patterns) : [];
+    return {
+        isMonorepo,
+        type,
+        patterns: Array.from(new Set(patterns)),
+        packages
+    };
+}
+/**
+ * Resolves directory paths containing package.json for standard glob patterns (e.g. packages/*).
+ */
+function findWorkspacePackages(workspaceDir, patterns) {
+    const discovered = [];
+    const searchDirs = patterns.length > 0 ? patterns : ['packages/*', 'apps/*', 'libs/*'];
+    for (const pattern of searchDirs) {
+        const baseDirName = pattern.replace(/\/\*.*$/, '').trim();
+        const fullBaseDir = external_path_.join(workspaceDir, baseDirName);
+        if (external_fs_.existsSync(fullBaseDir) && external_fs_.statSync(fullBaseDir).isDirectory()) {
+            try {
+                const entries = external_fs_.readdirSync(fullBaseDir, { withFileTypes: true });
+                for (const entry of entries) {
+                    if (entry.isDirectory()) {
+                        const childPkg = external_path_.join(fullBaseDir, entry.name, 'package.json');
+                        if (external_fs_.existsSync(childPkg)) {
+                            discovered.push(external_path_.join(baseDirName, entry.name));
+                        }
+                    }
+                }
+            }
+            catch {
+                // ignore read errors
+            }
+        }
+    }
+    return Array.from(new Set(discovered));
+}
+
 ;// CONCATENATED MODULE: ./src/summary.ts
 /**
  * Builds a rich Markdown description for the Pull Request and GitHub Step Summary.
  */
-function buildMarkdownSummary({ pm, changedFiles, diffStat, syncedLockfile, fixedAudit, auditBefore, auditAfter }) {
+function buildMarkdownSummary({ pm, yarnVariant, workspaceInfo, changedFiles, diffStat, dependencyDiffs = [], syncedLockfile, fixedAudit, auditBefore, auditAfter }) {
+    const pmDisplay = pm === 'yarn' && yarnVariant === 'berry' ? 'yarn (berry)' : pm;
     let md = `## 🤖 SyncMyDep: Automated Dependency Synchronization\n\n`;
     md += `SyncMyDep detected desynchronization or security vulnerabilities in your project's dependencies and generated this Pull Request.\n\n`;
     md += `### 📦 Overview\n\n`;
-    md += `- **Package Manager**: \`${pm}\`\n`;
+    md += `- **Package Manager**: \`${pmDisplay}\`\n`;
+    if (workspaceInfo && workspaceInfo.isMonorepo) {
+        md += `- **Monorepo / Workspace**: \`${workspaceInfo.type}\` (${workspaceInfo.packages.length} workspace packages)\n`;
+    }
     md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
     md += `- **Security Audit Fix**: ${fixedAudit ? '✅ Applied' : '⏭️ Skipped'}\n`;
     md += `- **Modified Files**: ${changedFiles.length} file(s)\n\n`;
+    if (dependencyDiffs && dependencyDiffs.length > 0) {
+        md += buildDependencyDiffTable(dependencyDiffs);
+    }
     md += `### 📁 Modified Dependency Files\n\n`;
     md += `| File | Status |\n`;
     md += `| :--- | :--- |\n`;
@@ -32312,16 +32714,23 @@ function buildMarkdownSummary({ pm, changedFiles, diffStat, syncedLockfile, fixe
 /**
  * Builds a clean, focused Markdown comment when SyncMyDep updates an existing PR via comment trigger.
  */
-function buildCommentSummary({ pm, changedFiles, diffStat, syncedLockfile, fixedAudit, auditBefore, auditAfter, branch, commenter }) {
+function buildCommentSummary({ pm, yarnVariant, workspaceInfo, changedFiles, diffStat, dependencyDiffs = [], syncedLockfile, fixedAudit, auditBefore, auditAfter, branch, commenter }) {
+    const pmDisplay = pm === 'yarn' && yarnVariant === 'berry' ? 'yarn (berry)' : pm;
     let md = `### 🚀 SyncMyDep: Dependencies Synchronized on \`${branch}\`\n\n`;
     if (commenter) {
         md += `Triggered by @${commenter}'s \`syncdep\` command.\n\n`;
     }
     md += `#### 📦 Summary\n`;
-    md += `- **Package Manager**: \`${pm}\`\n`;
+    md += `- **Package Manager**: \`${pmDisplay}\`\n`;
+    if (workspaceInfo && workspaceInfo.isMonorepo) {
+        md += `- **Monorepo / Workspace**: \`${workspaceInfo.type}\` (${workspaceInfo.packages.length} packages)\n`;
+    }
     md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
     md += `- **Security Audit Fix**: ${fixedAudit ? '✅ Applied' : '⏭️ Skipped'}\n`;
     md += `- **Files Updated**: ${changedFiles.length} file(s)\n\n`;
+    if (dependencyDiffs && dependencyDiffs.length > 0) {
+        md += buildDependencyDiffTable(dependencyDiffs);
+    }
     md += `#### 📁 Modified Dependency Files\n`;
     md += `| File | Status |\n`;
     md += `| :--- | :--- |\n`;
@@ -32348,6 +32757,26 @@ function buildCommentSummary({ pm, changedFiles, diffStat, syncedLockfile, fixed
     md += `---\n*Pushed directly to \`${branch}\` by [SyncMyDep](https://github.com/nivinvysakh/syncmydep).*`;
     return md;
 }
+/**
+ * Generates a markdown diff table for changed package versions.
+ */
+function buildDependencyDiffTable(diffs) {
+    let md = `### 🔄 Package Version Changes\n\n`;
+    md += `| Package | Old Version | New Version | Change |\n`;
+    md += `| :--- | :--- | :--- | :--- |\n`;
+    for (const diff of diffs) {
+        const oldV = diff.oldVersion ? `\`${diff.oldVersion}\`` : '—';
+        const newV = diff.newVersion ? `\`${diff.newVersion}\`` : '—';
+        let statusIcon = '🔄 Updated';
+        if (diff.changeType === 'added')
+            statusIcon = '✨ Added';
+        if (diff.changeType === 'removed')
+            statusIcon = '🗑️ Removed';
+        md += `| \`${diff.name}\` | ${oldV} | ${newV} | ${statusIcon} |\n`;
+    }
+    md += `\n`;
+    return md;
+}
 
 ;// CONCATENATED MODULE: ./src/index.ts
 
@@ -32357,32 +32786,57 @@ function buildCommentSummary({ pm, changedFiles, diffStat, syncedLockfile, fixed
 
 
 
+
+
 async function run() {
     try {
-        const token = core.getInput('github-token') || process.env.GITHUB_TOKEN;
-        const pmInput = core.getInput('package-manager') || 'auto';
+        const customConfigPath = core.getInput('config-file') || '';
         const workingDirInput = core.getInput('working-directory') || '.';
-        const syncLockfileOption = core.getBooleanInput('sync-lockfile');
-        const fixAuditOption = core.getBooleanInput('fix-audit');
-        const auditLevel = core.getInput('audit-level') || 'moderate';
-        const branchName = core.getInput('pr-branch') || 'syncmydep/dependency-fix';
-        const prTitle = core.getInput('pr-title') || 'chore(deps): synchronize package.json and lockfile issues';
-        const commitMessage = core.getInput('commit-message') || 'chore(deps): synchronize package.json and lockfile issues';
-        const labelsInput = core.getInput('pr-labels') || '';
-        const assigneesInput = core.getInput('pr-assignees') || '';
-        const reviewersInput = core.getInput('pr-reviewers') || '';
-        const commentTrigger = (core.getInput('comment-trigger') || 'syncdep').toLowerCase().trim();
+        const workspaceDir = external_path_.resolve(process.cwd(), workingDirInput);
+        // 1. Load .syncmydeprc.json if present
+        const fileConfig = loadConfigFile(workspaceDir, customConfigPath);
+        // 2. Resolve Action inputs (Action input > file config > default)
+        const token = core.getInput('github-token') || process.env.GITHUB_TOKEN;
+        const pmInput = core.getInput('package-manager') || fileConfig.packageManager || 'auto';
+        const syncLockfileOption = core.getInput('sync-lockfile') !== ''
+            ? core.getBooleanInput('sync-lockfile')
+            : fileConfig.syncLockfile ?? true;
+        const fixAuditOption = core.getInput('fix-audit') !== ''
+            ? core.getBooleanInput('fix-audit')
+            : fileConfig.fixAudit ?? true;
+        const auditLevel = core.getInput('audit-level') || fileConfig.auditLevel || 'moderate';
+        const checkOnly = core.getInput('check-only') !== ''
+            ? core.getBooleanInput('check-only')
+            : fileConfig.checkOnly ?? false;
+        const directPush = core.getInput('direct-push') !== ''
+            ? core.getBooleanInput('direct-push')
+            : fileConfig.directPush ?? false;
+        const branchName = core.getInput('pr-branch') || fileConfig.prBranch || 'syncmydep/dependency-fix';
+        const prTitle = core.getInput('pr-title') || fileConfig.prTitle || 'chore(deps): synchronize package.json and lockfile issues';
+        const commitMessage = core.getInput('commit-message') || fileConfig.commitMessage || 'chore(deps): synchronize package.json and lockfile issues';
+        const labelsInput = core.getInput('pr-labels') || (fileConfig.prLabels ? fileConfig.prLabels.join(',') : '');
+        const assigneesInput = core.getInput('pr-assignees') || (fileConfig.prAssignees ? fileConfig.prAssignees.join(',') : '');
+        const reviewersInput = core.getInput('pr-reviewers') || (fileConfig.prReviewers ? fileConfig.prReviewers.join(',') : '');
+        const commentTrigger = (core.getInput('comment-trigger') || fileConfig.commentTrigger || 'syncdep').toLowerCase().trim();
+        const requireOwner = core.getInput('require-owner') !== ''
+            ? core.getBooleanInput('require-owner')
+            : fileConfig.requireOwner ?? true;
         const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
         const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
         const reviewers = reviewersInput ? reviewersInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
-        const workspaceDir = external_path_.resolve(process.cwd(), workingDirInput);
         core.info(`[SyncMyDep] Working directory: ${workspaceDir}`);
+        // 3. Workspace / Monorepo Detection
+        const workspaceInfo = detectWorkspace(workspaceDir);
+        if (workspaceInfo.isMonorepo) {
+            core.info(`[SyncMyDep] Monorepo detected: type=${workspaceInfo.type}, packages=${workspaceInfo.packages.length}`);
+        }
         const eventName = github.context.eventName;
         const isIssueComment = eventName === 'issue_comment';
+        const isPullRequest = eventName === 'pull_request';
+        // 4. Handle PR Comment Trigger
         if (isIssueComment) {
             const issue = github.context.payload.issue;
             const comment = github.context.payload.comment;
-            // Ensure this comment is on a Pull Request
             if (!issue || !issue.pull_request) {
                 core.info('[SyncMyDep] Comment is on a regular issue, not a Pull Request. Skipping.');
                 return;
@@ -32402,7 +32856,6 @@ async function run() {
             const prNumber = issue.number;
             const commenter = comment?.user?.login || 'unknown';
             const authorAssociation = (comment?.author_association || '').toUpperCase();
-            const requireOwner = core.getInput('require-owner') !== 'false';
             const isOwner = commenter.toLowerCase() === owner.toLowerCase() || authorAssociation === 'OWNER';
             if (requireOwner && !isOwner) {
                 core.warning(`[SyncMyDep] User @${commenter} is not authorized. Only repository owners can trigger syncdep.`);
@@ -32413,21 +32866,19 @@ async function run() {
                 return;
             }
             core.info(`[SyncMyDep] Authorized trigger by @${commenter} on PR #${prNumber}`);
-            // Add acknowledgement reaction (eyes)
             if (comment?.id) {
                 await addCommentReaction(octokit, owner, repo, comment.id, 'eyes');
             }
-            // Fetch PR details to know head branch
             const prDetails = await getPullRequestDetails(octokit, owner, repo, prNumber);
             core.info(`[SyncMyDep] PR #${prNumber} head branch: ${prDetails.headBranch}`);
-            // Checkout PR branch
             await configureGitUser(workspaceDir);
             await checkoutBranch(workspaceDir, prDetails.headBranch, prNumber);
-            if (!checkPackageJsonExists(workspaceDir)) {
-                throw new Error(`package.json was not found in ${workspaceDir} on branch ${prDetails.headBranch}`);
-            }
             const pm = detectPackageManager(workspaceDir, pmInput);
-            core.info(`[SyncMyDep] Active package manager: ${pm}`);
+            const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
+            core.info(`[SyncMyDep] Active package manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
+            if (!checkPackageJsonExists(workspaceDir, pm)) {
+                throw new Error(`Package manifest was not found in ${workspaceDir} on branch ${prDetails.headBranch}`);
+            }
             let auditBefore = null;
             let auditAfter = null;
             if (fixAuditOption) {
@@ -32435,7 +32886,7 @@ async function run() {
             }
             let syncedLockfile = false;
             if (syncLockfileOption) {
-                const syncResult = await syncLockfile(workspaceDir, pm);
+                const syncResult = await syncLockfile(workspaceDir, pm, yarnVariant);
                 syncedLockfile = syncResult.success;
             }
             let fixedAudit = false;
@@ -32459,10 +32910,14 @@ async function run() {
             core.setOutput('changes-detected', 'true');
             core.setOutput('modified-files', changedFiles.join(','));
             const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
+            const dependencyDiffs = await parseDependencyDiffs(workspaceDir, changedFiles);
             const commentMarkdown = buildCommentSummary({
                 pm,
+                yarnVariant,
+                workspaceInfo,
                 changedFiles,
                 diffStat,
+                dependencyDiffs,
                 syncedLockfile,
                 fixedAudit,
                 auditBefore,
@@ -32485,12 +32940,13 @@ async function run() {
             }
             return;
         }
-        // Standard run (push / schedule / workflow_dispatch)
-        if (!checkPackageJsonExists(workspaceDir)) {
-            throw new Error(`package.json was not found in ${workspaceDir}`);
-        }
+        // 5. Standard run (check-only / pull_request direct-push / push / schedule)
         const pm = detectPackageManager(workspaceDir, pmInput);
-        core.info(`[SyncMyDep] Active package manager: ${pm}`);
+        const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
+        core.info(`[SyncMyDep] Active package manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
+        if (!checkPackageJsonExists(workspaceDir, pm)) {
+            throw new Error(`Package manifest was not found in ${workspaceDir}`);
+        }
         let auditBefore = null;
         let auditAfter = null;
         if (fixAuditOption) {
@@ -32499,16 +32955,44 @@ async function run() {
         }
         let syncedLockfile = false;
         if (syncLockfileOption) {
-            const syncResult = await syncLockfile(workspaceDir, pm);
+            const syncResult = await syncLockfile(workspaceDir, pm, yarnVariant);
             syncedLockfile = syncResult.success;
         }
         let fixedAudit = false;
-        if (fixAuditOption) {
+        if (fixAuditOption && !checkOnly) {
             const auditResult = await runAuditFix(workspaceDir, pm, auditLevel);
             fixedAudit = auditResult.success;
             auditAfter = await inspectAudit(workspaceDir, pm);
         }
         const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
+        // 6. Check-Only / CI Gating Mode
+        if (checkOnly) {
+            if (!hasChanges && (!auditBefore || auditBefore.total === 0)) {
+                core.info('✅ [SyncMyDep] Check-Only passed: all dependencies and lockfiles are synchronized and healthy.');
+                core.setOutput('changes-detected', 'false');
+                core.setOutput('modified-files', '');
+                await core.summary
+                    .addHeading('SyncMyDep: CI Check Passed')
+                    .addRaw('✅ **All dependencies and lockfiles are synchronized.** No action required.')
+                    .write();
+                return;
+            }
+            core.setOutput('changes-detected', 'true');
+            core.setOutput('modified-files', changedFiles.join(','));
+            for (const file of changedFiles) {
+                core.error(`[SyncMyDep] Lockfile desynchronization detected in: ${file}`, { file });
+            }
+            if (auditBefore && auditBefore.total > 0) {
+                core.error(`[SyncMyDep] ${auditBefore.total} security vulnerabilities detected in dependencies.`);
+            }
+            await core.summary
+                .addHeading('SyncMyDep: CI Check Failed')
+                .addRaw(`❌ **Desynchronization or security vulnerabilities detected in:** \`${changedFiles.join(', ')}\`\n\nRun SyncMyDep to automatically fix and sync your lockfiles.`)
+                .write();
+            core.setFailed(`SyncMyDep Check-Only failed: lockfiles are desynchronized or vulnerabilities were detected.`);
+            return;
+        }
+        // 7. No changes detected
         if (!hasChanges) {
             core.info('✅ [SyncMyDep] No dependency issues or lockfile desync detected. Everything is up-to-date!');
             core.setOutput('changes-detected', 'false');
@@ -32519,14 +33003,19 @@ async function run() {
                 .write();
             return;
         }
+        // 8. Changes detected
         core.info(`[SyncMyDep] Changes detected in files: ${changedFiles.join(', ')}`);
         core.setOutput('changes-detected', 'true');
         core.setOutput('modified-files', changedFiles.join(','));
         const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
+        const dependencyDiffs = await parseDependencyDiffs(workspaceDir, changedFiles);
         const prBody = buildMarkdownSummary({
             pm,
+            yarnVariant,
+            workspaceInfo,
             changedFiles,
             diffStat,
+            dependencyDiffs,
             syncedLockfile,
             fixedAudit,
             auditBefore,
@@ -32537,6 +33026,29 @@ async function run() {
             return;
         }
         await configureGitUser(workspaceDir);
+        // 9. Direct Push Mode on pull_request triggers
+        if ((isPullRequest || directPush) && github.context.payload.pull_request) {
+            const pr = github.context.payload.pull_request;
+            const headBranch = pr.head.ref;
+            const headRepo = pr.head.repo?.full_name;
+            const currentRepo = `${github.context.repo.owner}/${github.context.repo.repo}`;
+            if (headRepo === currentRepo) {
+                core.info(`[SyncMyDep] Direct Push enabled on PR #${pr.number} (branch: ${headBranch}). Pushing fixes...`);
+                const committed = await commitAndPushChanges({
+                    workspaceDir,
+                    branch: headBranch,
+                    commitMessage,
+                    files: changedFiles
+                });
+                if (committed) {
+                    const octokit = github.getOctokit(token);
+                    await postIssueComment(octokit, github.context.repo.owner, github.context.repo.repo, pr.number, `🔄 **SyncMyDep**: Automatically synchronized dependencies and updated \`${headBranch}\` in place.\n\n${prBody}`);
+                    core.info(`[SyncMyDep] Successfully direct-pushed to PR #${pr.number}`);
+                    return;
+                }
+            }
+        }
+        // 10. Create or Update Pull Request
         const committed = await commitAndPushChanges({
             workspaceDir,
             branch: branchName,
@@ -32549,7 +33061,6 @@ async function run() {
         }
         const octokit = github.getOctokit(token);
         const { owner, repo } = github.context.repo;
-        // Detect base branch
         let baseBranch = 'main';
         if (github.context.ref && github.context.ref.startsWith('refs/heads/')) {
             baseBranch = github.context.ref.replace('refs/heads/', '');

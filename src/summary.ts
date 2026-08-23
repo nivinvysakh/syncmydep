@@ -1,25 +1,36 @@
-import { SummaryOptions, CommentSummaryOptions } from './types';
+import { SummaryOptions, CommentSummaryOptions, DependencyDiff } from './types';
 
 /**
  * Builds a rich Markdown description for the Pull Request and GitHub Step Summary.
  */
 export function buildMarkdownSummary({
   pm,
+  yarnVariant,
+  workspaceInfo,
   changedFiles,
   diffStat,
+  dependencyDiffs = [],
   syncedLockfile,
   fixedAudit,
   auditBefore,
   auditAfter
 }: SummaryOptions): string {
+  const pmDisplay = pm === 'yarn' && yarnVariant === 'berry' ? 'yarn (berry)' : pm;
   let md = `## 🤖 SyncMyDep: Automated Dependency Synchronization\n\n`;
   md += `SyncMyDep detected desynchronization or security vulnerabilities in your project's dependencies and generated this Pull Request.\n\n`;
 
   md += `### 📦 Overview\n\n`;
-  md += `- **Package Manager**: \`${pm}\`\n`;
+  md += `- **Package Manager**: \`${pmDisplay}\`\n`;
+  if (workspaceInfo && workspaceInfo.isMonorepo) {
+    md += `- **Monorepo / Workspace**: \`${workspaceInfo.type}\` (${workspaceInfo.packages.length} workspace packages)\n`;
+  }
   md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
   md += `- **Security Audit Fix**: ${fixedAudit ? '✅ Applied' : '⏭️ Skipped'}\n`;
   md += `- **Modified Files**: ${changedFiles.length} file(s)\n\n`;
+
+  if (dependencyDiffs && dependencyDiffs.length > 0) {
+    md += buildDependencyDiffTable(dependencyDiffs);
+  }
 
   md += `### 📁 Modified Dependency Files\n\n`;
   md += `| File | Status |\n`;
@@ -62,8 +73,11 @@ export function buildMarkdownSummary({
  */
 export function buildCommentSummary({
   pm,
+  yarnVariant,
+  workspaceInfo,
   changedFiles,
   diffStat,
+  dependencyDiffs = [],
   syncedLockfile,
   fixedAudit,
   auditBefore,
@@ -71,16 +85,24 @@ export function buildCommentSummary({
   branch,
   commenter
 }: CommentSummaryOptions): string {
+  const pmDisplay = pm === 'yarn' && yarnVariant === 'berry' ? 'yarn (berry)' : pm;
   let md = `### 🚀 SyncMyDep: Dependencies Synchronized on \`${branch}\`\n\n`;
   if (commenter) {
     md += `Triggered by @${commenter}'s \`syncdep\` command.\n\n`;
   }
 
   md += `#### 📦 Summary\n`;
-  md += `- **Package Manager**: \`${pm}\`\n`;
+  md += `- **Package Manager**: \`${pmDisplay}\`\n`;
+  if (workspaceInfo && workspaceInfo.isMonorepo) {
+    md += `- **Monorepo / Workspace**: \`${workspaceInfo.type}\` (${workspaceInfo.packages.length} packages)\n`;
+  }
   md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
   md += `- **Security Audit Fix**: ${fixedAudit ? '✅ Applied' : '⏭️ Skipped'}\n`;
   md += `- **Files Updated**: ${changedFiles.length} file(s)\n\n`;
+
+  if (dependencyDiffs && dependencyDiffs.length > 0) {
+    md += buildDependencyDiffTable(dependencyDiffs);
+  }
 
   md += `#### 📁 Modified Dependency Files\n`;
   md += `| File | Status |\n`;
@@ -110,5 +132,26 @@ export function buildCommentSummary({
 
   md += `---\n*Pushed directly to \`${branch}\` by [SyncMyDep](https://github.com/nivinvysakh/syncmydep).*`;
 
+  return md;
+}
+
+/**
+ * Generates a markdown diff table for changed package versions.
+ */
+function buildDependencyDiffTable(diffs: DependencyDiff[]): string {
+  let md = `### 🔄 Package Version Changes\n\n`;
+  md += `| Package | Old Version | New Version | Change |\n`;
+  md += `| :--- | :--- | :--- | :--- |\n`;
+
+  for (const diff of diffs) {
+    const oldV = diff.oldVersion ? `\`${diff.oldVersion}\`` : '—';
+    const newV = diff.newVersion ? `\`${diff.newVersion}\`` : '—';
+    let statusIcon = '🔄 Updated';
+    if (diff.changeType === 'added') statusIcon = '✨ Added';
+    if (diff.changeType === 'removed') statusIcon = '🗑️ Removed';
+
+    md += `| \`${diff.name}\` | ${oldV} | ${newV} | ${statusIcon} |\n`;
+  }
+  md += `\n`;
   return md;
 }

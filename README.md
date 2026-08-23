@@ -2,25 +2,37 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/nivinvysakh/syncmydep/blob/main/LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 [![Automated Dependency Sync](https://img.shields.io/badge/SyncMyDep-Action-purple.svg)](https://github.com/nivinvysakh/syncmydep)
 
-> A JavaScript-powered GitHub Action that detects `package.json` and lockfile desynchronization or vulnerabilities, automatically resolves them, and creates a Pull Request.
+> A high-performance, TypeScript-powered GitHub Action that detects package manifest and lockfile desynchronization or vulnerabilities, auto-fixes them across **npm**, **pnpm**, **yarn (v1 & berry)**, **bun**, and **deno** (including monorepos), and opens Pull Requests or commits fixes directly.
 
 ---
 
 ## ✨ Features
 
-- 🔍 **Lockfile Synchronization**: Detects discrepancies when dependencies are added, updated, or removed in `package.json` without updating the lockfile (`package-lock.json`, `yarn.lock`, or `pnpm-lock.yaml`).
-- 🛡️ **Vulnerability Remediation**: Runs security audit fixes (`npm audit fix` / `pnpm audit --fix`) to resolve known security vulnerabilities.
-- 🤖 **Automated Pull Requests**: Automatically creates and updates branches, commits changed files, and opens or updates a Pull Request with a clear changelog and diff report.
-- 📦 **Multi-Package Manager Support**: Out-of-the-box support for `npm`, `yarn`, and `pnpm`.
-- ⚡ **Standalone & Fast**: Built with `@vercel/ncc`, bundling all dependencies into `dist/index.js` for instant execution without container setup overhead.
+- 🔍 **Lockfile Synchronization**: Detects discrepancies when dependencies are added, updated, or removed in package manifests without updating the lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`/`bun.lockb`, `deno.lock`).
+- 🛡️ **Vulnerability Remediation**: Runs security audit fixes (`npm audit fix`, `pnpm audit --fix`, `yarn audit`, `bun pm audit`) to resolve known security vulnerabilities.
+- 📦 **Modern Multi-Package Manager Support**: Seamless out-of-the-box support for:
+  - **npm**
+  - **pnpm**
+  - **yarn** (Classic v1 and **Yarn Berry v2–v4**)
+  - **bun** (`bun.lock` / `bun.lockb`)
+  - **deno** (`deno.lock` / `deno.json`)
+- 🏢 **Monorepo & Workspace Auto-Detection**: Automatically recognizes multi-package repositories powered by **Turborepo**, **pnpm workspaces**, **Lerna**, **Nx**, and standard **npm/yarn/bun workspaces**.
+- 🚦 **Check-Only / CI Gating Mode**: Dry-run mode (`check-only: true`) that emits GitHub step annotations and exits with code `1` if desynchronization or security vulnerabilities are detected.
+- ⚡ **Direct Push vs. PR Modes**: Optionally push fixes directly to active PR branches in place (`direct-push: true` or on `pull_request` triggers) without generating PR clutter.
+- 💬 **On-Demand PR Comments (`syncdep`)**: Comment `syncdep` on any open Pull Request to trigger an instant dependency sync and push directly to that PR branch with `👀` & `🚀` status reactions.
+- 🔒 **Repository Owner Authorization**: Built-in security that ensures only repository owners can trigger comment-based branch modifications.
+- ⚙️ **Config File Support**: Configure custom commit conventions, branch names, and rules in `.syncmydeprc.json`.
+- 📊 **Detailed Dependency Diff Reports**: Markdown tables highlighting added (`✨`), upgraded (`🔄`), and removed (`🗑️`) packages with exact before-and-after versions.
+- ⚡ **Zero-Dependency Fast Runner**: Standalone compiled bundle using `@vercel/ncc` with no runtime `npm install` overhead on runners.
 
 ---
 
-## 🚀 Quickstart Workflow
+## 🚀 Workflows
 
-Create a workflow file in your repository at `.github/workflows/syncmydep.yml`:
+### 1. Scheduled / Push Synchronization (`.github/workflows/syncmydep.yml`)
 
 ```yaml
 name: Dependency Sync & Audit
@@ -32,6 +44,9 @@ on:
   push:
     paths:
       - 'package.json'
+      - 'pnpm-workspace.yaml'
+      - 'bun.lock'
+      - 'deno.json'
     branches:
       - main
 
@@ -55,7 +70,7 @@ jobs:
           node-version: 20
 
       - name: Run SyncMyDep
-        uses: nivinvysakh/syncmydep@main
+        uses: nivinvysakh/syncmydep@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           package-manager: 'auto'
@@ -69,20 +84,9 @@ jobs:
 
 ---
 
-## 💬 On-Demand PR Comment Trigger (`syncdep`)
+### 2. On-Demand PR Comment Trigger (`.github/workflows/syncmydep-comment.yml`)
 
-You can also trigger SyncMyDep on any open Pull Request simply by commenting **`syncdep`** or **`/syncdep`** on the PR!
-
-SyncMyDep will:
-1. React to your comment with 👀 to confirm it's processing.
-2. Checkout that PR's branch.
-3. Synchronize `package.json` with the lockfile and fix security vulnerabilities.
-4. Push the fixes directly to that PR branch and react with 🚀.
-5. Post a comment with the detailed diff and update summary.
-
-### Comment Trigger Workflow Setup
-
-Add `.github/workflows/syncmydep-comment.yml`:
+Trigger dependency synchronization on any open Pull Request simply by commenting **`syncdep`** or **`/syncdep`**!
 
 ```yaml
 name: SyncMyDep on PR Comment
@@ -113,7 +117,7 @@ jobs:
           node-version: 20
 
       - name: Run SyncMyDep
-        uses: nivinvysakh/syncmydep@main
+        uses: nivinvysakh/syncmydep@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-trigger: 'syncdep'
@@ -124,16 +128,69 @@ jobs:
 
 ---
 
+### 3. CI Gating / Check-Only Linter Mode
+
+Use SyncMyDep strictly as a fast CI linter on pull requests to ensure contributors didn't forget to update lockfiles:
+
+```yaml
+name: CI Lockfile Verification
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify-lockfile:
+    name: Verify Lockfile Synchronization
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: nivinvysakh/syncmydep@v1
+        with:
+          check-only: 'true'
+```
+
+---
+
+## ⚙️ Configuration File (`.syncmydeprc.json`)
+
+You can create a `.syncmydeprc.json` in your repository root to configure default behavior across all workflows:
+
+```json
+{
+  "packageManager": "auto",
+  "syncLockfile": true,
+  "fixAudit": true,
+  "auditLevel": "moderate",
+  "checkOnly": false,
+  "directPush": false,
+  "prBranch": "syncmydep/dependency-fix",
+  "prTitle": "chore(deps): synchronize dependencies",
+  "commitMessage": "chore(deps): update lockfile",
+  "prLabels": ["dependencies", "automated-pr"],
+  "commentTrigger": "syncdep",
+  "requireOwner": true
+}
+```
+
+---
+
 ## ⚙️ Inputs Reference
 
 | Input | Description | Required | Default |
 | :--- | :--- | :---: | :--- |
 | `github-token` | GitHub token for git push and opening PRs (`GITHUB_TOKEN` or PAT) | No | `${{ github.token }}` |
-| `package-manager` | Package manager: `auto`, `npm`, `yarn`, `pnpm` | No | `auto` |
-| `working-directory` | Path to directory containing `package.json` | No | `.` |
-| `sync-lockfile` | Synchronize lockfile with `package.json` | No | `true` |
+| `package-manager` | Package manager: `auto`, `npm`, `yarn`, `pnpm`, `bun`, `deno` | No | `auto` |
+| `working-directory` | Path to directory containing package manifest and lockfile | No | `.` |
+| `config-file` | Optional path to custom `.syncmydeprc.json` config file | No | `""` |
+| `sync-lockfile` | Synchronize lockfile with package specifications | No | `true` |
 | `fix-audit` | Run security vulnerability auto-fix | No | `true` |
 | `audit-level` | Minimum vulnerability severity: `low`, `moderate`, `high`, `critical` | No | `moderate` |
+| `check-only` | Dry-run CI gating mode that emits step annotations and exits with code `1` on desync | No | `false` |
+| `direct-push` | Commit and push directly to open PR branch on `pull_request` triggers | No | `false` |
 | `pr-branch` | Branch name to push fixes to | No | `syncmydep/dependency-fix` |
 | `pr-title` | Title for the generated Pull Request | No | `chore(deps): synchronize package.json and lockfile issues` |
 | `commit-message` | Commit message for the updates | No | `chore(deps): synchronize package.json and lockfile issues` |
@@ -141,6 +198,7 @@ jobs:
 | `pr-assignees` | Comma-separated usernames to assign | No | `""` |
 | `pr-reviewers` | Comma-separated usernames to request review from | No | `""` |
 | `comment-trigger` | Keyword that triggers sync on a PR comment | No | `syncdep` |
+| `require-owner` | Restrict comment trigger commands strictly to repository owners | No | `true` |
 
 ---
 
@@ -148,87 +206,24 @@ jobs:
 
 | Output | Description | Example |
 | :--- | :--- | :--- |
-| `changes-detected` | String boolean indicating if issues were fixed | `'true'` / `'false'` |
+| `changes-detected` | String boolean indicating if issues were fixed or detected | `'true'` / `'false'` |
 | `pull-request-number` | The PR number created or updated | `42` |
 | `pull-request-url` | Full URL to the Pull Request | `https://github.com/org/repo/pull/42` |
 | `modified-files` | Comma-separated list of modified files | `package.json,package-lock.json` |
 
 ---
 
----
-
 ## 🛠️ Step-by-Step Setup Guide
 
-Follow these steps to enable SyncMyDep in any GitHub repository:
+### Step 1: Add Workflow File
+Add `.github/workflows/syncmydep.yml` to your repository.
 
-### Step 1: Add the Workflow File
-Create `.github/workflows/syncmydep.yml` in your target repository with the workflow above.
-
-### Step 2: Configure GitHub Repository Permissions *(Crucial)*
-
-By default, GitHub restricts automated workflows from creating branches and Pull Requests. You must enable these permissions in your repository settings:
-
-1. In your GitHub repository, navigate to **Settings** (top navigation tab).
-2. In the left sidebar under **Code and automation**, click **Actions** ➔ **General**.
-3. Scroll down to the **Workflow permissions** section:
-   - ✅ Select **"Read and write permissions"** *(Grants `GITHUB_TOKEN` permission to checkout, commit, and push the fix branch)*.
-   - ✅ Check the box for **"Allow GitHub Actions to create and approve pull requests"** *(Allows SyncMyDep to open the Pull Request)*.
-4. Click **Save**.
-
-```
-Repository Settings
- └── Actions
-      └── General
-           └── Workflow permissions
-                ├── ◉ Read and write permissions
-                └── ☑ Allow GitHub Actions to create and approve pull requests
-```
-
-> [!IMPORTANT]
-> If your repository belongs to a **GitHub Organization**, organization-wide policies might override these settings. An organization owner may need to allow `Read and write permissions` under **Organization Settings ➔ Actions ➔ General ➔ Workflow permissions**.
-
----
-
-### Step 3: (Optional) Using a Personal Access Token (PAT)
-
-By default, Pull Requests created by `GITHUB_TOKEN` do not trigger other GitHub Action workflows (such as downstream CI unit tests).
-
-If you want the Pull Request created by SyncMyDep to trigger your project's CI test suite:
-1. Create a fine-grained Personal Access Token (or classic PAT with `repo` scope).
-2. Add it to your repository as a Secret (**Settings ➔ Secrets and variables ➔ Actions ➔ New repository secret**) with name `SYNC_TOKEN`.
-3. In `.github/workflows/syncmydep.yml`, pass `github-token: ${{ secrets.SYNC_TOKEN }}`.
-
----
-
-### Step 4: Testing & Running the Action
-
-- **Manual Trigger**: Navigate to the **Actions** tab in your repository, select **Dependency Sync & Audit**, click **Run workflow**, and choose the `main` branch.
-- **Automated Runs**: SyncMyDep runs automatically on your configured cron schedule (e.g. every Monday) or whenever `package.json` is pushed.
-
----
-
-## 🔧 Troubleshooting Common Errors
-
-| Error | Root Cause | Solution |
-| :--- | :--- | :--- |
-| `Resource not accessible by integration (Status: 403)` | `GITHUB_TOKEN` lacks write permissions or workflow permissions are restricted. | Follow **Step 2** to select **Read and write permissions** in repository settings and ensure `permissions: contents: write, pull-requests: write` is in your workflow file. |
-| `GitHub Actions is not permitted to create or approve pull requests` | PR creation by Actions is disabled in repo settings. | Follow **Step 2** to check **"Allow GitHub Actions to create and approve pull requests"**. |
-| `package.json was not found` | Action is running in the wrong directory. | Set `working-directory: './path/to/app'` in the action inputs if your project is in a subdirectory or monorepo. |
-
----
-
-## 🛠️ Development & Building
-
-```bash
-# Install dependencies
-npm install
-
-# Run Jest tests
-npm test
-
-# Build bundled standalone distribution
-npm run build
-```
+### Step 2: Configure Repository Permissions
+1. In your GitHub repository, navigate to **Settings** ➔ **Actions** ➔ **General**.
+2. Under **Workflow permissions**:
+   - ✅ Select **"Read and write permissions"**.
+   - ✅ Check **"Allow GitHub Actions to create and approve pull requests"**.
+3. Click **Save**.
 
 ---
 
