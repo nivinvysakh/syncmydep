@@ -1,6 +1,6 @@
 {
   "name": "syncmydep",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "GitHub Action that detects package.json and lockfile mismatches, audits vulnerabilities, resolves them, and automatically opens a Pull Request.",
   "main": "dist/index.js",
   "scripts": {
