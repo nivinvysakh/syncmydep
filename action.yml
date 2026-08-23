@@ -19,7 +19,7 @@ inputs:
     required: false
     default: '.'
   config-file:
-    description: 'Optional path to .syncmydeprc.json configuration file.'
+    description: 'Optional path to .syncmydep.yml configuration file.'
     required: false
     default: ''
   sync-lockfile:

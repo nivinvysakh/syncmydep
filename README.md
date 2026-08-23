@@ -24,7 +24,7 @@
 - ⚡ **Direct Push vs. PR Modes**: Optionally push fixes directly to active PR branches in place (`direct-push: true` or on `pull_request` triggers) without generating PR clutter.
 - 💬 **On-Demand PR Comments (`syncdep`)**: Comment `syncdep` on any open Pull Request to trigger an instant dependency sync and push directly to that PR branch with `👀` & `🚀` status reactions.
 - 🔒 **Repository Owner Authorization**: Built-in security that ensures only repository owners can trigger comment-based branch modifications.
-- ⚙️ **Config File Support**: Configure custom commit conventions, branch names, and rules in `.syncmydeprc.json`.
+- ⚙️ **Config File Support**: Configure custom commit conventions, branch names, and rules in `.syncmydep.yml`.
 - 📊 **Detailed Dependency Diff Reports**: Markdown tables highlighting added (`✨`), upgraded (`🔄`), and removed (`🗑️`) packages with exact before-and-after versions.
 - ⚡ **Zero-Dependency Fast Runner**: Standalone compiled bundle using `@vercel/ncc` with no runtime `npm install` overhead on runners.
 
@@ -155,25 +155,25 @@ jobs:
 
 ---
 
-## ⚙️ Configuration File (`.syncmydeprc.json`)
+## ⚙️ Configuration File (`.syncmydep.yml`)
 
-You can create a `.syncmydeprc.json` in your repository root to configure default behavior across all workflows:
+You can create a `.syncmydep.yml` (or `.syncmydeprc.yml`) in your repository root to configure default behavior across all workflows:
 
-```json
-{
-  "packageManager": "auto",
-  "syncLockfile": true,
-  "fixAudit": true,
-  "auditLevel": "moderate",
-  "checkOnly": false,
-  "directPush": false,
-  "prBranch": "syncmydep/dependency-fix",
-  "prTitle": "chore(deps): synchronize dependencies",
-  "commitMessage": "chore(deps): update lockfile",
-  "prLabels": ["dependencies", "automated-pr"],
-  "commentTrigger": "syncdep",
-  "requireOwner": true
-}
+```yaml
+package-manager: 'auto'
+sync-lockfile: true
+fix-audit: true
+audit-level: 'moderate'
+check-only: false
+direct-push: false
+pr-branch: 'syncmydep/dependency-fix'
+pr-title: 'chore(deps): synchronize dependencies'
+commit-message: 'chore(deps): update lockfile'
+pr-labels:
+  - 'dependencies'
+  - 'automated-pr'
+comment-trigger: 'syncdep'
+require-owner: true
 ```
 
 ---
@@ -185,7 +185,7 @@ You can create a `.syncmydeprc.json` in your repository root to configure defaul
 | `github-token` | GitHub token for git push and opening PRs (`GITHUB_TOKEN` or PAT) | No | `${{ github.token }}` |
 | `package-manager` | Package manager: `auto`, `npm`, `yarn`, `pnpm`, `bun`, `deno` | No | `auto` |
 | `working-directory` | Path to directory containing package manifest and lockfile | No | `.` |
-| `config-file` | Optional path to custom `.syncmydeprc.json` config file | No | `""` |
+| `config-file` | Optional path to custom `.syncmydep.yml` config file | No | `""` |
 | `sync-lockfile` | Synchronize lockfile with package specifications | No | `true` |
 | `fix-audit` | Run security vulnerability auto-fix | No | `true` |
 | `audit-level` | Minimum vulnerability severity: `low`, `moderate`, `high`, `critical` | No | `moderate` |
