@@ -10,6 +10,12 @@ inputs:
     description: 'GitHub token for creating PRs and pushing branches (GITHUB_TOKEN or PAT).'
     required: false
     default: ${{ github.token }}
+  app-id:
+    description: 'GitHub App ID for bot authentication (e.g. syncmydep[bot]).'
+    required: false
+  private-key:
+    description: 'GitHub App private key (.pem format) for bot authentication.'
+    required: false
   package-manager:
     description: 'Package manager to use: "auto", "npm", "yarn", "pnpm", "bun", or "deno".'
     required: false

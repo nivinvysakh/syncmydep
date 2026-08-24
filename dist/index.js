@@ -36180,7 +36180,9 @@ function normalizeConfig(raw) {
         prAssignees: normalizeList(assignees),
         prReviewers: normalizeList(reviewers),
         commentTrigger: getVal('commentTrigger', 'comment-trigger', 'comment_trigger'),
-        requireOwner: getVal('requireOwner', 'require-owner', 'require_owner')
+        requireOwner: getVal('requireOwner', 'require-owner', 'require_owner'),
+        appId: getVal('appId', 'app-id', 'app_id'),
+        privateKey: getVal('privateKey', 'private-key', 'private_key')
     };
 }
 
@@ -36371,6 +36373,61 @@ async function ensurePackageManagerInstalled(pm) {
     }
 }
 
+// EXTERNAL MODULE: external "crypto"
+var external_crypto_ = __nccwpck_require__(6982);
+;// CONCATENATED MODULE: ./src/app-auth.ts
+
+
+/**
+ * Generates an installation access token for a GitHub App scoped to the target repository
+ * using standard Node.js crypto and GitHub REST API.
+ */
+async function getGitHubAppToken(appId, privateKey, owner, repo) {
+    try {
+        core.info(`[SyncMyDep] Authenticating via GitHub App (App ID: ${appId})...`);
+        const formattedKey = privateKey.replace(/\\n/g, '\n');
+        const now = Math.floor(Date.now() / 1000) - 60; // 1 min in past for clock drift
+        const exp = now + 10 * 60; // 10 minutes
+        const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+        const payload = Buffer.from(JSON.stringify({ iss: appId, iat: now, exp })).toString('base64url');
+        const sign = external_crypto_.createSign('RSA-SHA256');
+        sign.update(`${header}.${payload}`);
+        const signature = sign.sign(formattedKey, 'base64url');
+        const jwt = `${header}.${payload}.${signature}`;
+        // 1. Get repository installation
+        const instRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/installation`, {
+            headers: {
+                Authorization: `Bearer ${jwt}`,
+                Accept: 'application/vnd.github+json',
+                'User-Agent': 'SyncMyDep-Action'
+            }
+        });
+        if (!instRes.ok) {
+            throw new Error(`App is not installed on ${owner}/${repo} or invalid App ID (HTTP ${instRes.status})`);
+        }
+        const installation = (await instRes.json());
+        // 2. Generate installation token
+        const tokenRes = await fetch(`https://api.github.com/app/installations/${installation.id}/access_tokens`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${jwt}`,
+                Accept: 'application/vnd.github+json',
+                'User-Agent': 'SyncMyDep-Action'
+            }
+        });
+        if (!tokenRes.ok) {
+            throw new Error(`Failed to generate installation token (HTTP ${tokenRes.status})`);
+        }
+        const tokenData = (await tokenRes.json());
+        core.info(`[SyncMyDep] Successfully minted GitHub App installation token.`);
+        return tokenData.token;
+    }
+    catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to authenticate GitHub App: ${msg}`);
+    }
+}
+
 ;// CONCATENATED MODULE: ./src/summary.ts
 /**
  * Builds a rich Markdown description for the Pull Request and GitHub Step Summary.
@@ -36498,6 +36555,7 @@ function buildDependencyDiffTable(diffs) {
 
 
 
+
 async function run() {
     try {
         const customConfigPath = core.getInput('config-file') || '';
@@ -36506,7 +36564,13 @@ async function run() {
         // 1. Load .syncmydeprc.json if present
         const fileConfig = loadConfigFile(workspaceDir, customConfigPath);
         // 2. Resolve Action inputs (Action input > file config > default)
-        const token = core.getInput('github-token') || process.env.GITHUB_TOKEN;
+        let token = core.getInput('github-token') || process.env.GITHUB_TOKEN;
+        const appId = core.getInput('app-id') || fileConfig.appId;
+        const privateKey = core.getInput('private-key') || fileConfig.privateKey;
+        if (appId && privateKey) {
+            const { owner, repo } = github.context.repo;
+            token = await getGitHubAppToken(appId, privateKey, owner, repo);
+        }
         const pmInput = core.getInput('package-manager') || fileConfig.packageManager || 'auto';
         const syncLockfileOption = core.getInput('sync-lockfile') !== ''
             ? core.getBooleanInput('sync-lockfile')

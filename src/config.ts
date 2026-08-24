@@ -104,6 +104,8 @@ function normalizeConfig(raw: Record<string, unknown>): SyncMyDepConfig {
     prAssignees: normalizeList(assignees),
     prReviewers: normalizeList(reviewers),
     commentTrigger: getVal<string>('commentTrigger', 'comment-trigger', 'comment_trigger'),
-    requireOwner: getVal<boolean>('requireOwner', 'require-owner', 'require_owner')
+    requireOwner: getVal<boolean>('requireOwner', 'require-owner', 'require_owner'),
+    appId: getVal<string>('appId', 'app-id', 'app_id'),
+    privateKey: getVal<string>('privateKey', 'private-key', 'private_key')
   };
 }

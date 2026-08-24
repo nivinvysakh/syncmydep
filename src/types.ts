@@ -45,6 +45,8 @@ export interface SyncMyDepConfig {
   prReviewers?: string[];
   commentTrigger?: string;
   requireOwner?: boolean;
+  appId?: string;
+  privateKey?: string;
 }
 
 export interface AuditInspectionResult {
