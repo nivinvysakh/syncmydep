@@ -31841,13 +31841,13 @@ var __webpack_exports__ = {};
 // EXTERNAL MODULE: external "path"
 var external_path_ = __nccwpck_require__(6928);
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
-var core = __nccwpck_require__(7484);
+var lib_core = __nccwpck_require__(7484);
 // EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
 var github = __nccwpck_require__(3228);
 // EXTERNAL MODULE: external "fs"
 var external_fs_ = __nccwpck_require__(9896);
 // EXTERNAL MODULE: ./node_modules/@actions/exec/lib/exec.js
-var exec = __nccwpck_require__(5236);
+var lib_exec = __nccwpck_require__(5236);
 ;// CONCATENATED MODULE: ./src/detector.ts
 
 
@@ -31971,7 +31971,7 @@ async function inspectAudit(workspaceDir, pm) {
     };
     try {
         if (pm === 'npm') {
-            await exec.exec('npm', ['audit', '--json'], options);
+            await lib_exec.exec('npm', ['audit', '--json'], options);
             if (stdout) {
                 const parsed = JSON.parse(stdout);
                 const metadata = parsed.metadata || {};
@@ -31987,7 +31987,7 @@ async function inspectAudit(workspaceDir, pm) {
             }
         }
         else if (pm === 'pnpm') {
-            await exec.exec('pnpm', ['audit', '--json'], options);
+            await lib_exec.exec('pnpm', ['audit', '--json'], options);
             if (stdout) {
                 const parsed = JSON.parse(stdout);
                 const metadata = parsed.metadata || {};
@@ -32001,7 +32001,7 @@ async function inspectAudit(workspaceDir, pm) {
             }
         }
         else if (pm === 'yarn') {
-            await exec.exec('yarn', ['audit', '--json'], options);
+            await lib_exec.exec('yarn', ['audit', '--json'], options);
             if (stdout) {
                 let total = 0;
                 const lines = stdout.trim().split('\n');
@@ -32024,7 +32024,7 @@ async function inspectAudit(workspaceDir, pm) {
             }
         }
         else if (pm === 'bun') {
-            await exec.exec('bun', ['pm', 'scan'], options);
+            await lib_exec.exec('bun', ['pm', 'scan'], options);
             // bun pm scan output is parsed or treated as scanned
             return { total: 0, summary: {}, raw: null };
         }
@@ -32073,7 +32073,7 @@ async function syncLockfile(workspaceDir, pm, yarnVariant = 'classic') {
             args = ['install', '--package-lock-only', '--no-audit', '--no-fund'];
             break;
     }
-    core.info(`[SyncMyDep] Synchronizing lockfile using ${command} ${args.join(' ')}...`);
+    lib_core.info(`[SyncMyDep] Synchronizing lockfile using ${command} ${args.join(' ')}...`);
     const options = {
         cwd: workspaceDir,
         ignoreReturnCode: true,
@@ -32086,11 +32086,11 @@ async function syncLockfile(workspaceDir, pm, yarnVariant = 'classic') {
             }
         }
     };
-    const exitCode = await exec.exec(command, args, options);
+    const exitCode = await lib_exec.exec(command, args, options);
     // Fallback for Bun if --lockfile-only is not supported on older versions
     if (exitCode !== 0 && pm === 'bun') {
-        core.info('[SyncMyDep] Retrying Bun synchronization with bun install...');
-        const retryCode = await exec.exec('bun', ['install'], options);
+        lib_core.info('[SyncMyDep] Retrying Bun synchronization with bun install...');
+        const retryCode = await lib_exec.exec('bun', ['install'], options);
         return {
             success: retryCode === 0,
             output
@@ -32098,8 +32098,8 @@ async function syncLockfile(workspaceDir, pm, yarnVariant = 'classic') {
     }
     // Fallback for Yarn Berry if --mode update-lockfile fails
     if (exitCode !== 0 && pm === 'yarn' && yarnVariant === 'berry') {
-        core.info('[SyncMyDep] Retrying Yarn Berry synchronization with yarn install...');
-        const retryCode = await exec.exec('yarn', ['install'], options);
+        lib_core.info('[SyncMyDep] Retrying Yarn Berry synchronization with yarn install...');
+        const retryCode = await lib_exec.exec('yarn', ['install'], options);
         return {
             success: retryCode === 0,
             output
@@ -32136,10 +32136,10 @@ async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
             break;
         case 'deno':
         default:
-            core.info(`[SyncMyDep] Automated security audit fix is not supported for ${pm}. Skipping audit fix step.`);
+            lib_core.info(`[SyncMyDep] Automated security audit fix is not supported for ${pm}. Skipping audit fix step.`);
             return { success: true, output: '' };
     }
-    core.info(`[SyncMyDep] Running dependency fix/update using ${command} ${args.join(' ')} (level: ${auditLevel})...`);
+    lib_core.info(`[SyncMyDep] Running dependency fix/update using ${command} ${args.join(' ')} (level: ${auditLevel})...`);
     const options = {
         cwd: workspaceDir,
         ignoreReturnCode: true,
@@ -32152,7 +32152,7 @@ async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
             }
         }
     };
-    const exitCode = await exec.exec(command, args, options);
+    const exitCode = await lib_exec.exec(command, args, options);
     return {
         success: exitCode === 0,
         output
@@ -32173,7 +32173,7 @@ async function getGitStatus(workspaceDir) {
             }
         }
     };
-    await exec.exec('git', ['status', '--porcelain'], options);
+    await lib_exec.exec('git', ['status', '--porcelain'], options);
     const changedFiles = [];
     const lines = statusOutput.split(/\r?\n/);
     for (const line of lines) {
@@ -32220,7 +32220,7 @@ async function getGitDiffStat(workspaceDir, files) {
             }
         }
     };
-    await exec.exec('git', ['diff', '--stat', '--', ...files], options);
+    await lib_exec.exec('git', ['diff', '--stat', '--', ...files], options);
     return diffOutput.trim();
 }
 /**
@@ -32241,7 +32241,7 @@ async function parseDependencyDiffs(workspaceDir, changedFiles) {
             }
         }
     };
-    await exec.exec('git', ['diff', '-U1', '--', ...pkgFiles], options);
+    await lib_exec.exec('git', ['diff', '-U1', '--', ...pkgFiles], options);
     if (!diffText)
         return [];
     const diffs = [];
@@ -32312,7 +32312,7 @@ async function configureGitUser(workspaceDir, octokit, customName, customEmail) 
             if (user && user.login && user.login !== 'github-actions[bot]') {
                 userName = customName || user.name || user.login;
                 userEmail = customEmail || user.email || `${user.id}+${user.login}@users.noreply.github.com`;
-                core.info(`[SyncMyDep] Authenticated as @${user.login}. Git author set to ${userName} <${userEmail}>`);
+                lib_core.info(`[SyncMyDep] Authenticated as @${user.login}. Git author set to ${userName} <${userEmail}>`);
             }
         }
         catch {
@@ -32320,22 +32320,22 @@ async function configureGitUser(workspaceDir, octokit, customName, customEmail) 
         }
     }
     const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
-    await exec.exec('git', ['config', 'user.name', userName], options);
-    await exec.exec('git', ['config', 'user.email', userEmail], options);
+    await lib_exec.exec('git', ['config', 'user.name', userName], options);
+    await lib_exec.exec('git', ['config', 'user.email', userEmail], options);
 }
 /**
  * Checks out a specific branch locally and pulls latest if available.
  */
 async function checkoutBranch(workspaceDir, branch, prNumber) {
     const options = { cwd: workspaceDir, ignoreReturnCode: true };
-    core.info(`[SyncMyDep] Fetching and checking out branch ${branch}...`);
+    lib_core.info(`[SyncMyDep] Fetching and checking out branch ${branch}...`);
     if (prNumber) {
-        await exec.exec("git", ["fetch", "origin", `pull/${prNumber}/head:${branch}`], options);
+        await lib_exec.exec("git", ["fetch", "origin", `pull/${prNumber}/head:${branch}`], options);
     }
-    await exec.exec("git", ["fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`], options);
-    const checkoutCode = await exec.exec("git", ["checkout", branch], options);
+    await lib_exec.exec("git", ["fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`], options);
+    const checkoutCode = await lib_exec.exec("git", ["checkout", branch], options);
     if (checkoutCode !== 0) {
-        await exec.exec("git", ["checkout", "-B", branch, `origin/${branch}`], options);
+        await lib_exec.exec("git", ["checkout", "-B", branch, `origin/${branch}`], options);
     }
 }
 /**
@@ -32343,21 +32343,21 @@ async function checkoutBranch(workspaceDir, branch, prNumber) {
  */
 async function commitAndPushChanges({ workspaceDir, branch, commitMessage, files, }) {
     const options = { cwd: workspaceDir, ignoreReturnCode: true };
-    core.info(`[SyncMyDep] Checking out branch: ${branch}...`);
-    await exec.exec("git", ["checkout", "-B", branch], options);
-    core.info(`[SyncMyDep] Staging changed files: ${files.join(", ")}...`);
-    await exec.exec("git", ["add", ...files], options);
-    core.info(`[SyncMyDep] Committing changes...`);
-    const commitCode = await exec.exec("git", ["commit", "-m", commitMessage], options);
+    lib_core.info(`[SyncMyDep] Checking out branch: ${branch}...`);
+    await lib_exec.exec("git", ["checkout", "-B", branch], options);
+    lib_core.info(`[SyncMyDep] Staging changed files: ${files.join(", ")}...`);
+    await lib_exec.exec("git", ["add", ...files], options);
+    lib_core.info(`[SyncMyDep] Committing changes...`);
+    const commitCode = await lib_exec.exec("git", ["commit", "-m", commitMessage], options);
     if (commitCode !== 0) {
-        core.info("[SyncMyDep] No staged changes to commit or commit failed.");
+        lib_core.info("[SyncMyDep] No staged changes to commit or commit failed.");
         return false;
     }
-    core.info(`[SyncMyDep] Pushing branch ${branch} to remote...`);
-    const pushCode = await exec.exec("git", ["push", "origin", branch], options);
+    lib_core.info(`[SyncMyDep] Pushing branch ${branch} to remote...`);
+    const pushCode = await lib_exec.exec("git", ["push", "origin", branch], options);
     if (pushCode !== 0) {
-        core.info(`[SyncMyDep] Standard push failed, retrying with force...`);
-        const forcePushCode = await exec.exec("git", ["push", "origin", branch, "--force"], options);
+        lib_core.info(`[SyncMyDep] Standard push failed, retrying with force...`);
+        const forcePushCode = await lib_exec.exec("git", ["push", "origin", branch, "--force"], options);
         if (forcePushCode !== 0) {
             throw new Error(`Failed to push branch ${branch} to origin.`);
         }
@@ -32396,7 +32396,7 @@ async function addCommentReaction(octokit, owner, repo, commentId, content) {
     }
     catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        core.warning(`Could not add reaction to comment #${commentId}: ${errMsg}`);
+        lib_core.warning(`Could not add reaction to comment #${commentId}: ${errMsg}`);
     }
 }
 /**
@@ -32413,14 +32413,31 @@ async function postIssueComment(octokit, owner, repo, issueNumber, body) {
     }
     catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        core.warning(`Could not post comment to #${issueNumber}: ${errMsg}`);
+        lib_core.warning(`Could not post comment to #${issueNumber}: ${errMsg}`);
+    }
+}
+/**
+ * Updates an existing comment on an issue or PR.
+ */
+async function updateIssueComment(octokit, owner, repo, commentId, body) {
+    try {
+        await octokit.rest.issues.updateComment({
+            owner,
+            repo,
+            comment_id: commentId,
+            body,
+        });
+    }
+    catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        lib_core.warning(`Could not update comment #${commentId}: ${errMsg}`);
     }
 }
 /**
  * Creates or updates a GitHub Pull Request using Octokit.
  */
 async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, headBranch, title, body, labels = [], assignees = [], reviewers = [], }) {
-    core.info(`[SyncMyDep] Checking for existing Pull Request for branch ${headBranch}...`);
+    lib_core.info(`[SyncMyDep] Checking for existing Pull Request for branch ${headBranch}...`);
     // Query existing PRs
     const { data: pullRequests } = await octokit.rest.pulls.list({
         owner,
@@ -32436,7 +32453,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
         const existingPr = pullRequests[0];
         prNumber = existingPr.number;
         prUrl = existingPr.html_url;
-        core.info(`[SyncMyDep] Found existing Pull Request #${prNumber}. Updating...`);
+        lib_core.info(`[SyncMyDep] Found existing Pull Request #${prNumber}. Updating...`);
         await octokit.rest.pulls.update({
             owner,
             repo,
@@ -32447,7 +32464,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
         await postIssueComment(octokit, owner, repo, prNumber, `🔄 **SyncMyDep Update**: Refreshed dependency synchronization and pushed latest fixes.`);
     }
     else {
-        core.info(`[SyncMyDep] Creating new Pull Request...`);
+        lib_core.info(`[SyncMyDep] Creating new Pull Request...`);
         const { data: newPr } = await octokit.rest.pulls.create({
             owner,
             repo,
@@ -32459,7 +32476,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
         prNumber = newPr.number;
         prUrl = newPr.html_url;
         isNew = true;
-        core.info(`[SyncMyDep] Successfully created Pull Request #${prNumber}: ${prUrl}`);
+        lib_core.info(`[SyncMyDep] Successfully created Pull Request #${prNumber}: ${prUrl}`);
     }
     // Apply labels
     if (labels && labels.length > 0) {
@@ -32473,7 +32490,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
         }
         catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
-            core.warning(`Could not apply labels to PR #${prNumber}: ${errMsg}`);
+            lib_core.warning(`Could not apply labels to PR #${prNumber}: ${errMsg}`);
         }
     }
     // Apply assignees
@@ -32488,7 +32505,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
         }
         catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
-            core.warning(`Could not assign users to PR #${prNumber}: ${errMsg}`);
+            lib_core.warning(`Could not assign users to PR #${prNumber}: ${errMsg}`);
         }
     }
     // Request reviewers
@@ -32503,7 +32520,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
         }
         catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
-            core.warning(`Could not request reviewers for PR #${prNumber}: ${errMsg}`);
+            lib_core.warning(`Could not request reviewers for PR #${prNumber}: ${errMsg}`);
         }
     }
     return {
@@ -36107,7 +36124,7 @@ function loadConfigFile(workspaceDir, customConfigPath) {
             targetPath = resolved;
         }
         else {
-            core.warning(`[SyncMyDep] Specified config-file not found: ${resolved}`);
+            lib_core.warning(`[SyncMyDep] Specified config-file not found: ${resolved}`);
         }
     }
     if (!targetPath) {
@@ -36123,7 +36140,7 @@ function loadConfigFile(workspaceDir, customConfigPath) {
         return {};
     }
     try {
-        core.info(`[SyncMyDep] Found configuration file: ${targetPath}`);
+        lib_core.info(`[SyncMyDep] Found configuration file: ${targetPath}`);
         const content = external_fs_.readFileSync(targetPath, 'utf8').trim();
         if (!content)
             return {};
@@ -36137,7 +36154,7 @@ function loadConfigFile(workspaceDir, customConfigPath) {
     }
     catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        core.warning(`[SyncMyDep] Failed to parse config file (${targetPath}): ${msg}. Using defaults.`);
+        lib_core.warning(`[SyncMyDep] Failed to parse config file (${targetPath}): ${msg}. Using defaults.`);
         return {};
     }
 }
@@ -36317,45 +36334,45 @@ async function ensurePackageManagerInstalled(pm) {
     try {
         const existing = await io.which(pm, false);
         if (existing) {
-            core.info(`[SyncMyDep] Found ${pm} executable in PATH at: ${existing}`);
+            lib_core.info(`[SyncMyDep] Found ${pm} executable in PATH at: ${existing}`);
             return;
         }
     }
     catch {
         // continue to auto-install
     }
-    core.info(`[SyncMyDep] 📦 '${pm}' is not found in PATH. Auto-installing ${pm} for the runner...`);
+    lib_core.info(`[SyncMyDep] 📦 '${pm}' is not found in PATH. Auto-installing ${pm} for the runner...`);
     const options = { ignoreReturnCode: true };
     switch (pm) {
         case 'bun': {
             // 1. Try global npm install
-            const npmCode = await exec.exec('npm', ['install', '-g', 'bun'], options);
+            const npmCode = await lib_exec.exec('npm', ['install', '-g', 'bun'], options);
             if (npmCode !== 0) {
                 // 2. Fallback to official curl script
-                await exec.exec('bash', ['-c', 'curl -fsSL https://bun.sh/install | bash'], options);
+                await lib_exec.exec('bash', ['-c', 'curl -fsSL https://bun.sh/install | bash'], options);
             }
             const home = process.env.HOME || '/root';
             const bunBin = external_path_.join(home, '.bun', 'bin');
-            core.addPath(bunBin);
+            lib_core.addPath(bunBin);
             process.env.PATH = `${bunBin}:${process.env.PATH}`;
             break;
         }
         case 'pnpm': {
-            await exec.exec('npm', ['install', '-g', 'pnpm'], options);
+            await lib_exec.exec('npm', ['install', '-g', 'pnpm'], options);
             break;
         }
         case 'yarn': {
-            await exec.exec('npm', ['install', '-g', 'yarn'], options);
+            await lib_exec.exec('npm', ['install', '-g', 'yarn'], options);
             break;
         }
         case 'deno': {
-            const npmCode = await exec.exec('npm', ['install', '-g', 'deno'], options);
+            const npmCode = await lib_exec.exec('npm', ['install', '-g', 'deno'], options);
             if (npmCode !== 0) {
-                await exec.exec('bash', ['-c', 'curl -fsSL https://deno.land/install.sh | sh'], options);
+                await lib_exec.exec('bash', ['-c', 'curl -fsSL https://deno.land/install.sh | sh'], options);
             }
             const home = process.env.HOME || '/root';
             const denoBin = external_path_.join(home, '.deno', 'bin');
-            core.addPath(denoBin);
+            lib_core.addPath(denoBin);
             process.env.PATH = `${denoBin}:${process.env.PATH}`;
             break;
         }
@@ -36363,11 +36380,11 @@ async function ensurePackageManagerInstalled(pm) {
     try {
         const verified = await io.which(pm, false);
         if (verified) {
-            core.info(`[SyncMyDep] ✅ Successfully installed and verified ${pm} (${verified})`);
+            lib_core.info(`[SyncMyDep] ✅ Successfully installed and verified ${pm} (${verified})`);
         }
     }
     catch {
-        core.info(`[SyncMyDep] Auto-installation step completed for ${pm}`);
+        lib_core.info(`[SyncMyDep] Auto-installation step completed for ${pm}`);
     }
 }
 
@@ -36487,7 +36504,186 @@ function buildDependencyDiffTable(diffs) {
     return md;
 }
 
+;// CONCATENATED MODULE: ./src/rebase-pr.ts
+
+
+
+
+
+
+/**
+ * Deletes a local branch if it exists.
+ */
+async function deleteLocalBranch(workspaceDir, branch) {
+    const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
+    core.info(`[SyncMyDep] Deleting local branch ${branch}...`);
+    const exitCode = await exec.exec("git", ["branch", "-D", branch], options);
+    return exitCode === 0;
+}
+/**
+ * Deletes a remote branch on origin if it exists.
+ */
+async function deleteRemoteBranch(workspaceDir, branch, octokit, owner, repo) {
+    core.info(`[SyncMyDep] Deleting remote branch origin/${branch}...`);
+    if (octokit && owner && repo) {
+        try {
+            await octokit.rest.git.deleteRef({
+                owner,
+                repo,
+                ref: `heads/${branch}`,
+            });
+            core.info(`[SyncMyDep] Successfully deleted remote ref heads/${branch} via GitHub API.`);
+            return true;
+        }
+        catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            core.info(`[SyncMyDep] GitHub API deleteRef failed or ref did not exist: ${errMsg}`);
+        }
+    }
+    // Fallback via git command line
+    const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
+    const exitCode = await exec.exec("git", ["push", "origin", "--delete", branch], options);
+    return exitCode === 0;
+}
+/**
+ * Fetches the latest base branch and creates/resets a fresh target branch from it.
+ */
+async function recreateFreshBranch(workspaceDir, baseBranch, targetBranch) {
+    const options = { cwd: workspaceDir, ignoreReturnCode: true };
+    lib_core.info(`[SyncMyDep] Cleaning working directory...`);
+    await lib_exec.exec("git", ["reset", "--hard"], options);
+    await lib_exec.exec("git", ["clean", "-fd"], options);
+    lib_core.info(`[SyncMyDep] Fetching latest ${baseBranch} from origin...`);
+    await lib_exec.exec("git", ["fetch", "origin", `${baseBranch}:${baseBranch}`], options);
+    await lib_exec.exec("git", [
+        "fetch",
+        "origin",
+        `+refs/heads/${baseBranch}:refs/remotes/origin/${baseBranch}`,
+    ], options);
+    lib_core.info(`[SyncMyDep] Creating clean branch ${targetBranch} tracking origin/${baseBranch}...`);
+    const branchCheckoutCode = await lib_exec.exec("git", ["checkout", "-B", targetBranch, `origin/${baseBranch}`], options);
+    if (branchCheckoutCode !== 0) {
+        // Fallback: switch to base branch directly and create new branch
+        await lib_exec.exec("git", ["checkout", baseBranch], options);
+        await lib_exec.exec("git", ["pull", "origin", baseBranch], options);
+        await lib_exec.exec("git", ["checkout", "-B", targetBranch], options);
+    }
+}
+/**
+ * Orchestrates a complete rebase: resets the target branch from the latest base branch,
+ * re-executes the dependency synchronization & vulnerability fixes, commits and force pushes,
+ * and updates or notifies the PR.
+ */
+async function rebaseAndRedoProcess(options) {
+    const { workspaceDir, octokit, owner, repo, baseBranch, targetBranch, prNumber, commentId, commenter, pm, yarnVariant, workspaceInfo, syncLockfileOption, fixAuditOption, auditLevel, commitMessage, prTitle, labels = [], assignees = [], reviewers = [], } = options;
+    lib_core.info(`[SyncMyDep] Starting Rebase & Redo process for branch: ${targetBranch} (base: ${baseBranch})`);
+    if (commentId) {
+        await updateIssueComment(octokit, owner, repo, commentId, `🔄 **SyncMyDep**: Rebasing branch \`${targetBranch}\` onto \`${baseBranch}\` and generating a fresh dependency synchronization...`);
+    }
+    // 1. Recreate fresh branch from upstream base
+    await recreateFreshBranch(workspaceDir, baseBranch, targetBranch);
+    // 2. Perform vulnerability check before fix
+    let auditBefore = null;
+    let auditAfter = null;
+    if (fixAuditOption) {
+        auditBefore = await inspectAudit(workspaceDir, pm);
+    }
+    // 3. Sync lockfile
+    let syncedLockfile = false;
+    if (syncLockfileOption) {
+        const syncResult = await syncLockfile(workspaceDir, pm, yarnVariant);
+        syncedLockfile = syncResult.success;
+    }
+    // 4. Run audit fix
+    let fixedAudit = false;
+    if (fixAuditOption) {
+        const auditResult = await runAuditFix(workspaceDir, pm, auditLevel);
+        fixedAudit = auditResult.success;
+        auditAfter = await inspectAudit(workspaceDir, pm);
+    }
+    // 5. Check git changes
+    const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
+    if (!hasChanges) {
+        lib_core.info(`[SyncMyDep] No changes detected after rebase on branch ${targetBranch}.`);
+        if (prNumber) {
+            if (commentId) {
+                await addCommentReaction(octokit, owner, repo, commentId, "hooray");
+                await updateIssueComment(octokit, owner, repo, commentId, `✅ **SyncMyDep**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\`. All dependencies are already up-to-date and synchronized!`);
+            }
+            else {
+                await postIssueComment(octokit, owner, repo, prNumber, `✅ **SyncMyDep Rebase**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\`. All dependencies are already up-to-date and synchronized!`);
+            }
+        }
+        return { hasChanges: false, pushed: false, prNumber };
+    }
+    // 6. Stage, commit and force push
+    const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
+    const dependencyDiffs = await parseDependencyDiffs(workspaceDir, changedFiles);
+    const committedAndPushed = await commitAndPushChanges({
+        workspaceDir,
+        branch: targetBranch,
+        commitMessage: commitMessage ||
+            `chore(deps): synchronize package.json and lockfile (rebased)`,
+        files: changedFiles,
+    });
+    if (!committedAndPushed) {
+        lib_core.warning(`[SyncMyDep] Failed to commit or push rebased branch ${targetBranch}.`);
+        return { hasChanges: true, pushed: false, prNumber };
+    }
+    // 7. PR Comment or PR Create/Update
+    if (prNumber) {
+        const commentMarkdown = buildCommentSummary({
+            pm,
+            yarnVariant,
+            workspaceInfo,
+            changedFiles,
+            diffStat,
+            dependencyDiffs,
+            syncedLockfile,
+            fixedAudit,
+            auditBefore,
+            auditAfter,
+            branch: targetBranch,
+            commenter,
+        });
+        if (commentId) {
+            await addCommentReaction(octokit, owner, repo, commentId, "rocket");
+            await updateIssueComment(octokit, owner, repo, commentId, `🔄 **SyncMyDep**: Successfully rebased \`${targetBranch}\` onto \`${baseBranch}\` with fresh lockfile synchronization.\n\n${commentMarkdown}`);
+        }
+        else {
+            await postIssueComment(octokit, owner, repo, prNumber, `🔄 **SyncMyDep Rebase Completed**: Branch \`${targetBranch}\` has been refreshed and rebased onto \`${baseBranch}\` with fresh lockfile synchronization.\n\n${commentMarkdown}`);
+        }
+        return { hasChanges: true, pushed: true, prNumber };
+    }
+    const prBody = buildMarkdownSummary({
+        pm,
+        yarnVariant,
+        workspaceInfo,
+        changedFiles,
+        diffStat,
+        dependencyDiffs,
+        syncedLockfile,
+        fixedAudit,
+        auditBefore,
+        auditAfter,
+    });
+    const prResult = await createOrUpdatePullRequest({
+        octokit,
+        owner,
+        repo,
+        baseBranch,
+        headBranch: targetBranch,
+        title: prTitle,
+        body: prBody,
+        labels,
+        assignees,
+        reviewers,
+    });
+    return { hasChanges: true, pushed: true, prNumber: prResult.number };
+}
+
 ;// CONCATENATED MODULE: ./src/index.ts
+
 
 
 
@@ -36500,45 +36696,45 @@ function buildDependencyDiffTable(diffs) {
 
 async function run() {
     try {
-        const customConfigPath = core.getInput('config-file') || '';
-        const workingDirInput = core.getInput('working-directory') || '.';
+        const customConfigPath = lib_core.getInput('config-file') || '';
+        const workingDirInput = lib_core.getInput('working-directory') || '.';
         const workspaceDir = external_path_.resolve(process.cwd(), workingDirInput);
         // 1. Load .syncmydeprc.json if present
         const fileConfig = loadConfigFile(workspaceDir, customConfigPath);
         // 2. Resolve Action inputs (Action input > file config > default)
-        const token = core.getInput('github-token') || process.env.GITHUB_TOKEN;
-        const pmInput = core.getInput('package-manager') || fileConfig.packageManager || 'auto';
-        const syncLockfileOption = core.getInput('sync-lockfile') !== ''
-            ? core.getBooleanInput('sync-lockfile')
+        const token = lib_core.getInput('github-token') || process.env.GITHUB_TOKEN;
+        const pmInput = lib_core.getInput('package-manager') || fileConfig.packageManager || 'auto';
+        const syncLockfileOption = lib_core.getInput('sync-lockfile') !== ''
+            ? lib_core.getBooleanInput('sync-lockfile')
             : fileConfig.syncLockfile ?? true;
-        const fixAuditOption = core.getInput('fix-audit') !== ''
-            ? core.getBooleanInput('fix-audit')
+        const fixAuditOption = lib_core.getInput('fix-audit') !== ''
+            ? lib_core.getBooleanInput('fix-audit')
             : fileConfig.fixAudit ?? true;
-        const auditLevel = core.getInput('audit-level') || fileConfig.auditLevel || 'moderate';
-        const checkOnly = core.getInput('check-only') !== ''
-            ? core.getBooleanInput('check-only')
+        const auditLevel = lib_core.getInput('audit-level') || fileConfig.auditLevel || 'moderate';
+        const checkOnly = lib_core.getInput('check-only') !== ''
+            ? lib_core.getBooleanInput('check-only')
             : fileConfig.checkOnly ?? false;
-        const directPush = core.getInput('direct-push') !== ''
-            ? core.getBooleanInput('direct-push')
+        const directPush = lib_core.getInput('direct-push') !== ''
+            ? lib_core.getBooleanInput('direct-push')
             : fileConfig.directPush ?? false;
-        const branchName = core.getInput('pr-branch') || fileConfig.prBranch || 'syncmydep/dependency-fix';
-        const prTitle = core.getInput('pr-title') || fileConfig.prTitle || 'chore(deps): synchronize package.json and lockfile issues';
-        const commitMessage = core.getInput('commit-message') || fileConfig.commitMessage || 'chore(deps): synchronize package.json and lockfile issues';
-        const labelsInput = core.getInput('pr-labels') || (fileConfig.prLabels ? fileConfig.prLabels.join(',') : '');
-        const assigneesInput = core.getInput('pr-assignees') || (fileConfig.prAssignees ? fileConfig.prAssignees.join(',') : '');
-        const reviewersInput = core.getInput('pr-reviewers') || (fileConfig.prReviewers ? fileConfig.prReviewers.join(',') : '');
-        const commentTrigger = (core.getInput('comment-trigger') || fileConfig.commentTrigger || 'syncdep').toLowerCase().trim();
-        const requireOwner = core.getInput('require-owner') !== ''
-            ? core.getBooleanInput('require-owner')
+        const branchName = lib_core.getInput('pr-branch') || fileConfig.prBranch || 'syncmydep/dependency-fix';
+        const prTitle = lib_core.getInput('pr-title') || fileConfig.prTitle || 'chore(deps): synchronize package.json and lockfile issues';
+        const commitMessage = lib_core.getInput('commit-message') || fileConfig.commitMessage || 'chore(deps): synchronize package.json and lockfile issues';
+        const labelsInput = lib_core.getInput('pr-labels') || (fileConfig.prLabels ? fileConfig.prLabels.join(',') : '');
+        const assigneesInput = lib_core.getInput('pr-assignees') || (fileConfig.prAssignees ? fileConfig.prAssignees.join(',') : '');
+        const reviewersInput = lib_core.getInput('pr-reviewers') || (fileConfig.prReviewers ? fileConfig.prReviewers.join(',') : '');
+        const commentTrigger = (lib_core.getInput('comment-trigger') || fileConfig.commentTrigger || 'syncdep').toLowerCase().trim();
+        const requireOwner = lib_core.getInput('require-owner') !== ''
+            ? lib_core.getBooleanInput('require-owner')
             : fileConfig.requireOwner ?? true;
         const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
         const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
         const reviewers = reviewersInput ? reviewersInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
-        core.info(`[SyncMyDep] Working directory: ${workspaceDir}`);
+        lib_core.info(`[SyncMyDep] Working directory: ${workspaceDir}`);
         // 3. Workspace / Monorepo Detection
         const workspaceInfo = detectWorkspace(workspaceDir);
         if (workspaceInfo.isMonorepo) {
-            core.info(`[SyncMyDep] Monorepo detected: type=${workspaceInfo.type}, packages=${workspaceInfo.packages.length}`);
+            lib_core.info(`[SyncMyDep] Monorepo detected: type=${workspaceInfo.type}, packages=${workspaceInfo.packages.length}`);
         }
         const eventName = github.context.eventName;
         const isIssueComment = eventName === 'issue_comment';
@@ -36548,14 +36744,14 @@ async function run() {
             const issue = github.context.payload.issue;
             const comment = github.context.payload.comment;
             if (!issue || !issue.pull_request) {
-                core.info('[SyncMyDep] Comment is on a regular issue, not a Pull Request. Skipping.');
+                lib_core.info('[SyncMyDep] Comment is on a regular issue, not a Pull Request. Skipping.');
                 return;
             }
             const commentBody = (comment?.body || '').toLowerCase().trim();
             const triggerPatterns = [commentTrigger, `/${commentTrigger}`, `@${commentTrigger}`];
             const isTriggered = triggerPatterns.some((pattern) => commentBody.includes(pattern));
             if (!isTriggered) {
-                core.info(`[SyncMyDep] Comment did not contain trigger word (${commentTrigger}). Skipping.`);
+                lib_core.info(`[SyncMyDep] Comment did not contain trigger word (${commentTrigger}). Skipping.`);
                 return;
             }
             if (!token) {
@@ -36568,25 +36764,52 @@ async function run() {
             const authorAssociation = (comment?.author_association || '').toUpperCase();
             const isOwner = commenter.toLowerCase() === owner.toLowerCase() || authorAssociation === 'OWNER';
             if (requireOwner && !isOwner) {
-                core.warning(`[SyncMyDep] User @${commenter} is not authorized. Only repository owners can trigger syncdep.`);
+                lib_core.warning(`[SyncMyDep] User @${commenter} is not authorized. Only repository owners can trigger syncdep.`);
                 if (comment?.id) {
                     await addCommentReaction(octokit, owner, repo, comment.id, '-1');
                 }
                 await postIssueComment(octokit, owner, repo, prNumber, `⛔ **SyncMyDep**: Permission denied. Only the repository owner (@${owner}) is permitted to trigger dependency synchronization on this repository.`);
                 return;
             }
-            core.info(`[SyncMyDep] Authorized trigger by @${commenter} on PR #${prNumber}`);
+            lib_core.info(`[SyncMyDep] Authorized trigger by @${commenter} on PR #${prNumber}`);
             if (comment?.id) {
                 await addCommentReaction(octokit, owner, repo, comment.id, 'eyes');
             }
             const prDetails = await getPullRequestDetails(octokit, owner, repo, prNumber);
-            core.info(`[SyncMyDep] PR #${prNumber} head branch: ${prDetails.headBranch}`);
+            lib_core.info(`[SyncMyDep] PR #${prNumber} head branch: ${prDetails.headBranch}`);
             await configureGitUser(workspaceDir, octokit);
-            await checkoutBranch(workspaceDir, prDetails.headBranch, prNumber);
             const pm = detectPackageManager(workspaceDir, pmInput);
             const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
-            core.info(`[SyncMyDep] Active package manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
+            lib_core.info(`[SyncMyDep] Active package manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
             await ensurePackageManagerInstalled(pm);
+            const isRebase = commentBody.includes('rebase') || commentBody.includes('reset') || commentBody.includes('fresh');
+            if (isRebase) {
+                lib_core.info(`[SyncMyDep] Executing rebase and redo for PR #${prNumber}...`);
+                await rebaseAndRedoProcess({
+                    workspaceDir,
+                    octokit,
+                    owner,
+                    repo,
+                    baseBranch: prDetails.baseBranch,
+                    targetBranch: prDetails.headBranch,
+                    prNumber,
+                    commentId: comment?.id,
+                    commenter,
+                    pm,
+                    yarnVariant,
+                    workspaceInfo,
+                    syncLockfileOption,
+                    fixAuditOption,
+                    auditLevel,
+                    commitMessage,
+                    prTitle,
+                    labels,
+                    assignees,
+                    reviewers
+                });
+                return;
+            }
+            await checkoutBranch(workspaceDir, prDetails.headBranch, prNumber);
             if (!checkPackageJsonExists(workspaceDir, pm)) {
                 throw new Error(`Package manifest was not found in ${workspaceDir} on branch ${prDetails.headBranch}`);
             }
@@ -36608,18 +36831,18 @@ async function run() {
             }
             const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
             if (!hasChanges) {
-                core.info('✅ [SyncMyDep] No dependency issues or lockfile changes needed for this PR.');
-                core.setOutput('changes-detected', 'false');
-                core.setOutput('modified-files', '');
+                lib_core.info('✅ [SyncMyDep] No dependency issues or lockfile changes needed for this PR.');
+                lib_core.setOutput('changes-detected', 'false');
+                lib_core.setOutput('modified-files', '');
                 if (comment?.id) {
                     await addCommentReaction(octokit, owner, repo, comment.id, 'hooray');
                 }
                 await postIssueComment(octokit, owner, repo, prNumber, `✅ **SyncMyDep**: All dependencies and lockfiles on branch \`${prDetails.headBranch}\` are already synchronized and healthy! No changes needed.`);
                 return;
             }
-            core.info(`[SyncMyDep] Changes detected in files: ${changedFiles.join(', ')}`);
-            core.setOutput('changes-detected', 'true');
-            core.setOutput('modified-files', changedFiles.join(','));
+            lib_core.info(`[SyncMyDep] Changes detected in files: ${changedFiles.join(', ')}`);
+            lib_core.setOutput('changes-detected', 'true');
+            lib_core.setOutput('modified-files', changedFiles.join(','));
             const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
             const dependencyDiffs = await parseDependencyDiffs(workspaceDir, changedFiles);
             const commentMarkdown = buildCommentSummary({
@@ -36647,14 +36870,14 @@ async function run() {
                     await addCommentReaction(octokit, owner, repo, comment.id, 'rocket');
                 }
                 await postIssueComment(octokit, owner, repo, prNumber, commentMarkdown);
-                core.info(`[SyncMyDep] Successfully pushed dependency fixes to branch ${prDetails.headBranch}`);
+                lib_core.info(`[SyncMyDep] Successfully pushed dependency fixes to branch ${prDetails.headBranch}`);
             }
             return;
         }
         // 5. Standard run (check-only / pull_request direct-push / push / schedule)
         const pm = detectPackageManager(workspaceDir, pmInput);
         const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
-        core.info(`[SyncMyDep] Active package manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
+        lib_core.info(`[SyncMyDep] Active package manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
         await ensurePackageManagerInstalled(pm);
         if (!checkPackageJsonExists(workspaceDir, pm)) {
             throw new Error(`Package manifest was not found in ${workspaceDir}`);
@@ -36663,7 +36886,7 @@ async function run() {
         let auditAfter = null;
         if (fixAuditOption) {
             auditBefore = await inspectAudit(workspaceDir, pm);
-            core.info(`[SyncMyDep] Initial audit scan found ${auditBefore.total} vulnerabilities.`);
+            lib_core.info(`[SyncMyDep] Initial audit scan found ${auditBefore.total} vulnerabilities.`);
         }
         let syncedLockfile = false;
         if (syncLockfileOption) {
@@ -36680,45 +36903,45 @@ async function run() {
         // 6. Check-Only / CI Gating Mode
         if (checkOnly) {
             if (!hasChanges && (!auditBefore || auditBefore.total === 0)) {
-                core.info('✅ [SyncMyDep] Check-Only passed: all dependencies and lockfiles are synchronized and healthy.');
-                core.setOutput('changes-detected', 'false');
-                core.setOutput('modified-files', '');
-                await core.summary
+                lib_core.info('✅ [SyncMyDep] Check-Only passed: all dependencies and lockfiles are synchronized and healthy.');
+                lib_core.setOutput('changes-detected', 'false');
+                lib_core.setOutput('modified-files', '');
+                await lib_core.summary
                     .addHeading('SyncMyDep: CI Check Passed')
                     .addRaw('✅ **All dependencies and lockfiles are synchronized.** No action required.')
                     .write();
                 return;
             }
-            core.setOutput('changes-detected', 'true');
-            core.setOutput('modified-files', changedFiles.join(','));
+            lib_core.setOutput('changes-detected', 'true');
+            lib_core.setOutput('modified-files', changedFiles.join(','));
             for (const file of changedFiles) {
-                core.error(`[SyncMyDep] Lockfile desynchronization detected in: ${file}`, { file });
+                lib_core.error(`[SyncMyDep] Lockfile desynchronization detected in: ${file}`, { file });
             }
             if (auditBefore && auditBefore.total > 0) {
-                core.error(`[SyncMyDep] ${auditBefore.total} security vulnerabilities detected in dependencies.`);
+                lib_core.error(`[SyncMyDep] ${auditBefore.total} security vulnerabilities detected in dependencies.`);
             }
-            await core.summary
+            await lib_core.summary
                 .addHeading('SyncMyDep: CI Check Failed')
                 .addRaw(`❌ **Desynchronization or security vulnerabilities detected in:** \`${changedFiles.join(', ')}\`\n\nRun SyncMyDep to automatically fix and sync your lockfiles.`)
                 .write();
-            core.setFailed(`SyncMyDep Check-Only failed: lockfiles are desynchronized or vulnerabilities were detected.`);
+            lib_core.setFailed(`SyncMyDep Check-Only failed: lockfiles are desynchronized or vulnerabilities were detected.`);
             return;
         }
         // 7. No changes detected
         if (!hasChanges) {
-            core.info('✅ [SyncMyDep] No dependency issues or lockfile desync detected. Everything is up-to-date!');
-            core.setOutput('changes-detected', 'false');
-            core.setOutput('modified-files', '');
-            await core.summary
+            lib_core.info('✅ [SyncMyDep] No dependency issues or lockfile desync detected. Everything is up-to-date!');
+            lib_core.setOutput('changes-detected', 'false');
+            lib_core.setOutput('modified-files', '');
+            await lib_core.summary
                 .addHeading('SyncMyDep: Dependency Check Result')
                 .addRaw('✅ **All dependencies and lockfiles are synchronized and healthy.** No Pull Request is needed.')
                 .write();
             return;
         }
         // 8. Changes detected
-        core.info(`[SyncMyDep] Changes detected in files: ${changedFiles.join(', ')}`);
-        core.setOutput('changes-detected', 'true');
-        core.setOutput('modified-files', changedFiles.join(','));
+        lib_core.info(`[SyncMyDep] Changes detected in files: ${changedFiles.join(', ')}`);
+        lib_core.setOutput('changes-detected', 'true');
+        lib_core.setOutput('modified-files', changedFiles.join(','));
         const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
         const dependencyDiffs = await parseDependencyDiffs(workspaceDir, changedFiles);
         const prBody = buildMarkdownSummary({
@@ -36734,7 +36957,7 @@ async function run() {
             auditAfter
         });
         if (!token) {
-            core.warning('[SyncMyDep] No github-token provided. Cannot push branch or create PR automatically.');
+            lib_core.warning('[SyncMyDep] No github-token provided. Cannot push branch or create PR automatically.');
             return;
         }
         const octokit = github.getOctokit(token);
@@ -36747,7 +36970,7 @@ async function run() {
             const headRepo = pr.head.repo?.full_name;
             const currentRepo = `${github.context.repo.owner}/${github.context.repo.repo}`;
             if (headRepo === currentRepo) {
-                core.info(`[SyncMyDep] Direct Push enabled on PR #${pr.number} (branch: ${headBranch}). Pushing fixes...`);
+                lib_core.info(`[SyncMyDep] Direct Push enabled on PR #${pr.number} (branch: ${headBranch}). Pushing fixes...`);
                 const committed = await commitAndPushChanges({
                     workspaceDir,
                     branch: headBranch,
@@ -36757,7 +36980,7 @@ async function run() {
                 if (committed) {
                     const octokit = github.getOctokit(token);
                     await postIssueComment(octokit, github.context.repo.owner, github.context.repo.repo, pr.number, `🔄 **SyncMyDep**: Automatically synchronized dependencies and updated \`${headBranch}\` in place.\n\n${prBody}`);
-                    core.info(`[SyncMyDep] Successfully direct-pushed to PR #${pr.number}`);
+                    lib_core.info(`[SyncMyDep] Successfully direct-pushed to PR #${pr.number}`);
                     return;
                 }
             }
@@ -36770,7 +36993,7 @@ async function run() {
             files: changedFiles
         });
         if (!committed) {
-            core.info('[SyncMyDep] No changes committed.');
+            lib_core.info('[SyncMyDep] No changes committed.');
             return;
         }
         let baseBranch = 'main';
@@ -36798,9 +37021,9 @@ async function run() {
             assignees,
             reviewers
         });
-        core.setOutput('pull-request-number', String(prResult.number));
-        core.setOutput('pull-request-url', prResult.url);
-        await core.summary
+        lib_core.setOutput('pull-request-number', String(prResult.number));
+        lib_core.setOutput('pull-request-url', prResult.url);
+        await lib_core.summary
             .addHeading('SyncMyDep: PR Created / Updated')
             .addRaw(`🚀 **Pull Request #${prResult.number}**: [${prTitle}](${prResult.url})\n\n`)
             .addRaw(prBody)
@@ -36808,7 +37031,7 @@ async function run() {
     }
     catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
-        core.setFailed(`[SyncMyDep Action Failed]: ${errMsg}`);
+        lib_core.setFailed(`[SyncMyDep Action Failed]: ${errMsg}`);
     }
 }
 run();

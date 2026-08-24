@@ -10,6 +10,7 @@ import {
 import {
   commitAndPushChanges,
   postIssueComment,
+  updateIssueComment,
   addCommentReaction,
   createOrUpdatePullRequest,
 } from "./git-pr";
@@ -186,6 +187,16 @@ export async function rebaseAndRedoProcess(
     `[SyncMyDep] Starting Rebase & Redo process for branch: ${targetBranch} (base: ${baseBranch})`,
   );
 
+  if (commentId) {
+    await updateIssueComment(
+      octokit,
+      owner,
+      repo,
+      commentId,
+      `🔄 **SyncMyDep**: Rebasing branch \`${targetBranch}\` onto \`${baseBranch}\` and generating a fresh dependency synchronization...`,
+    );
+  }
+
   // 1. Recreate fresh branch from upstream base
   await recreateFreshBranch(workspaceDir, baseBranch, targetBranch);
 
@@ -223,14 +234,22 @@ export async function rebaseAndRedoProcess(
     if (prNumber) {
       if (commentId) {
         await addCommentReaction(octokit, owner, repo, commentId, "hooray");
+        await updateIssueComment(
+          octokit,
+          owner,
+          repo,
+          commentId,
+          `✅ **SyncMyDep**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\`. All dependencies are already up-to-date and synchronized!`,
+        );
+      } else {
+        await postIssueComment(
+          octokit,
+          owner,
+          repo,
+          prNumber,
+          `✅ **SyncMyDep Rebase**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\`. All dependencies are already up-to-date and synchronized!`,
+        );
       }
-      await postIssueComment(
-        octokit,
-        owner,
-        repo,
-        prNumber,
-        `✅ **SyncMyDep Rebase**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\`. All dependencies are already up-to-date and synchronized!`,
-      );
     }
 
     return { hasChanges: false, pushed: false, prNumber };
@@ -278,15 +297,22 @@ export async function rebaseAndRedoProcess(
 
     if (commentId) {
       await addCommentReaction(octokit, owner, repo, commentId, "rocket");
+      await updateIssueComment(
+        octokit,
+        owner,
+        repo,
+        commentId,
+        `🔄 **SyncMyDep**: Successfully rebased \`${targetBranch}\` onto \`${baseBranch}\` with fresh lockfile synchronization.\n\n${commentMarkdown}`,
+      );
+    } else {
+      await postIssueComment(
+        octokit,
+        owner,
+        repo,
+        prNumber,
+        `🔄 **SyncMyDep Rebase Completed**: Branch \`${targetBranch}\` has been refreshed and rebased onto \`${baseBranch}\` with fresh lockfile synchronization.\n\n${commentMarkdown}`,
+      );
     }
-
-    await postIssueComment(
-      octokit,
-      owner,
-      repo,
-      prNumber,
-      `🔄 **SyncMyDep Rebase Completed**: Branch \`${targetBranch}\` has been refreshed and rebased onto \`${baseBranch}\` with fresh lockfile synchronization.\n\n${commentMarkdown}`,
-    );
 
     return { hasChanges: true, pushed: true, prNumber };
   }

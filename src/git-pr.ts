@@ -188,6 +188,29 @@ export async function postIssueComment(
 }
 
 /**
+ * Updates an existing comment on an issue or PR.
+ */
+export async function updateIssueComment(
+  octokit: OctokitClient,
+  owner: string,
+  repo: string,
+  commentId: number,
+  body: string,
+): Promise<void> {
+  try {
+    await octokit.rest.issues.updateComment({
+      owner,
+      repo,
+      comment_id: commentId,
+      body,
+    });
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    core.warning(`Could not update comment #${commentId}: ${errMsg}`);
+  }
+}
+
+/**
  * Creates or updates a GitHub Pull Request using Octokit.
  */
 export async function createOrUpdatePullRequest({

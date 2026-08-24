@@ -30,6 +30,7 @@ import {
 import { loadConfigFile } from './config';
 import { detectWorkspace } from './workspace';
 import { ensurePackageManagerInstalled } from './installer';
+import { rebaseAndRedoProcess } from './rebase-pr';
 import { buildMarkdownSummary, buildCommentSummary } from './summary';
 import { AuditInspectionResult } from './types';
 
@@ -141,13 +142,42 @@ async function run(): Promise<void> {
       core.info(`[SyncMyDep] PR #${prNumber} head branch: ${prDetails.headBranch}`);
 
       await configureGitUser(workspaceDir, octokit);
-      await checkoutBranch(workspaceDir, prDetails.headBranch, prNumber);
 
       const pm = detectPackageManager(workspaceDir, pmInput);
       const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
       core.info(`[SyncMyDep] Active package manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
 
       await ensurePackageManagerInstalled(pm);
+
+      const isRebase = commentBody.includes('rebase') || commentBody.includes('reset') || commentBody.includes('fresh');
+      if (isRebase) {
+        core.info(`[SyncMyDep] Executing rebase and redo for PR #${prNumber}...`);
+        await rebaseAndRedoProcess({
+          workspaceDir,
+          octokit,
+          owner,
+          repo,
+          baseBranch: prDetails.baseBranch,
+          targetBranch: prDetails.headBranch,
+          prNumber,
+          commentId: comment?.id,
+          commenter,
+          pm,
+          yarnVariant,
+          workspaceInfo,
+          syncLockfileOption,
+          fixAuditOption,
+          auditLevel,
+          commitMessage,
+          prTitle,
+          labels,
+          assignees,
+          reviewers
+        });
+        return;
+      }
+
+      await checkoutBranch(workspaceDir, prDetails.headBranch, prNumber);
 
       if (!checkPackageJsonExists(workspaceDir, pm)) {
         throw new Error(`Package manifest was not found in ${workspaceDir} on branch ${prDetails.headBranch}`);

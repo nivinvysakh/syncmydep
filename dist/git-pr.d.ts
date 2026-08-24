@@ -24,6 +24,10 @@ export declare function addCommentReaction(octokit: OctokitClient, owner: string
  */
 export declare function postIssueComment(octokit: OctokitClient, owner: string, repo: string, issueNumber: number, body: string): Promise<void>;
 /**
+ * Updates an existing comment on an issue or PR.
+ */
+export declare function updateIssueComment(octokit: OctokitClient, owner: string, repo: string, commentId: number, body: string): Promise<void>;
+/**
  * Creates or updates a GitHub Pull Request using Octokit.
  */
 export declare function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, headBranch, title, body, labels, assignees, reviewers, }: CreateOrUpdatePullRequestParams): Promise<PullRequestResult>;
