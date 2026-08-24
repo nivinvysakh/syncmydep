@@ -1,8 +1,8 @@
 import { CommitAndPushParams, CreateOrUpdatePullRequestParams, PullRequestResult, PullRequestDetails, CommentReaction, OctokitClient } from './types';
 /**
- * Sets up git bot credentials.
+ * Sets up git bot credentials. Defaults to syncmydep[bot].
  */
-export declare function configureGitUser(workspaceDir: string): Promise<void>;
+export declare function configureGitUser(workspaceDir: string, userName?: string, userEmail?: string): Promise<void>;
 /**
  * Checks out a specific branch locally and pulls latest if available.
  */

@@ -3,12 +3,12 @@ name: Sync Dependencies & Check Lockfile
 on:
   schedule:
     # Run every Monday at 08:00 UTC
-    - cron: '0 8 * * 1'
+    - cron: "0 8 * * 1"
   workflow_dispatch:
   push:
     paths:
-      - 'package.json'
-      - '.syncmydep.yml'
+      - "package.json"
+      - ".syncmydep.yml"
     branches:
       - main
 
@@ -32,21 +32,21 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: "npm"
 
       - name: Run SyncMyDep Action
         id: syncmydep
         uses: nivinvysakh/syncmydep@main
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          package-manager: 'auto'
-          sync-lockfile: 'true'
-          fix-audit: 'true'
-          audit-level: 'moderate'
-          pr-branch: 'syncmydep/dependency-fix'
-          pr-title: 'chore(deps): synchronize package.json and lockfile'
-          commit-message: 'chore(deps): synchronize package.json and lockfile'
-          pr-labels: 'dependencies, automated-pr'
+          github-token: ${{ secrets.SYNCMYDEP_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          package-manager: "auto"
+          sync-lockfile: "true"
+          fix-audit: "true"
+          audit-level: "moderate"
+          pr-branch: "syncmydep/dependency-fix"
+          pr-title: "chore(deps): synchronize package.json and lockfile"
+          commit-message: "chore(deps): synchronize package.json and lockfile"
+          pr-labels: "dependencies, automated-pr"
 
       - name: Log Action Output
         if: steps.syncmydep.outputs.changes-detected == 'true'

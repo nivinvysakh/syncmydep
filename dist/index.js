@@ -32301,12 +32301,12 @@ async function parseDependencyDiffs(workspaceDir, changedFiles) {
 
 
 /**
- * Sets up git bot credentials.
+ * Sets up git bot credentials. Defaults to syncmydep[bot].
  */
-async function configureGitUser(workspaceDir) {
+async function configureGitUser(workspaceDir, userName = 'syncmydep[bot]', userEmail = 'syncmydep[bot]@users.noreply.github.com') {
     const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
-    await exec.exec('git', ['config', 'user.name', 'github-actions[bot]'], options);
-    await exec.exec('git', ['config', 'user.email', 'github-actions[bot]@users.noreply.github.com'], options);
+    await exec.exec('git', ['config', 'user.name', userName], options);
+    await exec.exec('git', ['config', 'user.email', userEmail], options);
 }
 /**
  * Checks out a specific branch locally and pulls latest if available.

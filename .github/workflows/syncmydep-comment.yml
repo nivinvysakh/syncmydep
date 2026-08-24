@@ -28,8 +28,8 @@ jobs:
       - name: Run SyncMyDep
         uses: ./
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-trigger: 'syncdep'
-          require-owner: 'true'
-          sync-lockfile: 'true'
-          fix-audit: 'true'
+          github-token: ${{ secrets.SYNCMYDEP_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          comment-trigger: "syncdep"
+          require-owner: "true"
+          sync-lockfile: "true"
+          fix-audit: "true"
