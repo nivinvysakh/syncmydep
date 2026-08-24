@@ -32301,9 +32301,24 @@ async function parseDependencyDiffs(workspaceDir, changedFiles) {
 
 
 /**
- * Sets up git bot credentials. Defaults to syncmydep[bot].
+ * Sets up git bot credentials. Automatically uses authenticated PAT user if available.
  */
-async function configureGitUser(workspaceDir, userName = 'syncmydep[bot]', userEmail = 'syncmydep[bot]@users.noreply.github.com') {
+async function configureGitUser(workspaceDir, octokit, customName, customEmail) {
+    let userName = customName || 'syncmydep[bot]';
+    let userEmail = customEmail || 'syncmydep[bot]@users.noreply.github.com';
+    if (octokit && (!customName || !customEmail)) {
+        try {
+            const { data: user } = await octokit.rest.users.getAuthenticated();
+            if (user && user.login && user.login !== 'github-actions[bot]') {
+                userName = customName || user.name || user.login;
+                userEmail = customEmail || user.email || `${user.id}+${user.login}@users.noreply.github.com`;
+                core.info(`[SyncMyDep] Authenticated as @${user.login}. Git author set to ${userName} <${userEmail}>`);
+            }
+        }
+        catch {
+            // Fallback to default
+        }
+    }
     const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
     await exec.exec('git', ['config', 'user.name', userName], options);
     await exec.exec('git', ['config', 'user.email', userEmail], options);
@@ -32315,34 +32330,34 @@ async function checkoutBranch(workspaceDir, branch, prNumber) {
     const options = { cwd: workspaceDir, ignoreReturnCode: true };
     core.info(`[SyncMyDep] Fetching and checking out branch ${branch}...`);
     if (prNumber) {
-        await exec.exec('git', ['fetch', 'origin', `pull/${prNumber}/head:${branch}`], options);
+        await exec.exec("git", ["fetch", "origin", `pull/${prNumber}/head:${branch}`], options);
     }
-    await exec.exec('git', ['fetch', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`], options);
-    const checkoutCode = await exec.exec('git', ['checkout', branch], options);
+    await exec.exec("git", ["fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`], options);
+    const checkoutCode = await exec.exec("git", ["checkout", branch], options);
     if (checkoutCode !== 0) {
-        await exec.exec('git', ['checkout', '-B', branch, `origin/${branch}`], options);
+        await exec.exec("git", ["checkout", "-B", branch, `origin/${branch}`], options);
     }
 }
 /**
  * Creates/checks out a branch, commits modified files, and pushes to origin.
  */
-async function commitAndPushChanges({ workspaceDir, branch, commitMessage, files }) {
+async function commitAndPushChanges({ workspaceDir, branch, commitMessage, files, }) {
     const options = { cwd: workspaceDir, ignoreReturnCode: true };
     core.info(`[SyncMyDep] Checking out branch: ${branch}...`);
-    await exec.exec('git', ['checkout', '-B', branch], options);
-    core.info(`[SyncMyDep] Staging changed files: ${files.join(', ')}...`);
-    await exec.exec('git', ['add', ...files], options);
+    await exec.exec("git", ["checkout", "-B", branch], options);
+    core.info(`[SyncMyDep] Staging changed files: ${files.join(", ")}...`);
+    await exec.exec("git", ["add", ...files], options);
     core.info(`[SyncMyDep] Committing changes...`);
-    const commitCode = await exec.exec('git', ['commit', '-m', commitMessage], options);
+    const commitCode = await exec.exec("git", ["commit", "-m", commitMessage], options);
     if (commitCode !== 0) {
-        core.info('[SyncMyDep] No staged changes to commit or commit failed.');
+        core.info("[SyncMyDep] No staged changes to commit or commit failed.");
         return false;
     }
     core.info(`[SyncMyDep] Pushing branch ${branch} to remote...`);
-    const pushCode = await exec.exec('git', ['push', 'origin', branch], options);
+    const pushCode = await exec.exec("git", ["push", "origin", branch], options);
     if (pushCode !== 0) {
         core.info(`[SyncMyDep] Standard push failed, retrying with force...`);
-        const forcePushCode = await exec.exec('git', ['push', 'origin', branch, '--force'], options);
+        const forcePushCode = await exec.exec("git", ["push", "origin", branch, "--force"], options);
         if (forcePushCode !== 0) {
             throw new Error(`Failed to push branch ${branch} to origin.`);
         }
@@ -32356,7 +32371,7 @@ async function getPullRequestDetails(octokit, owner, repo, pullNumber) {
     const { data: pr } = await octokit.rest.pulls.get({
         owner,
         repo,
-        pull_number: pullNumber
+        pull_number: pullNumber,
     });
     return {
         number: pr.number,
@@ -32364,7 +32379,7 @@ async function getPullRequestDetails(octokit, owner, repo, pullNumber) {
         headBranch: pr.head.ref,
         baseBranch: pr.base.ref,
         headRepo: pr.head.repo ? pr.head.repo.full_name : `${owner}/${repo}`,
-        htmlUrl: pr.html_url
+        htmlUrl: pr.html_url,
     };
 }
 /**
@@ -32376,7 +32391,7 @@ async function addCommentReaction(octokit, owner, repo, commentId, content) {
             owner,
             repo,
             comment_id: commentId,
-            content
+            content,
         });
     }
     catch (err) {
@@ -32393,7 +32408,7 @@ async function postIssueComment(octokit, owner, repo, issueNumber, body) {
             owner,
             repo,
             issue_number: issueNumber,
-            body
+            body,
         });
     }
     catch (err) {
@@ -32404,15 +32419,15 @@ async function postIssueComment(octokit, owner, repo, issueNumber, body) {
 /**
  * Creates or updates a GitHub Pull Request using Octokit.
  */
-async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, headBranch, title, body, labels = [], assignees = [], reviewers = [] }) {
+async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, headBranch, title, body, labels = [], assignees = [], reviewers = [], }) {
     core.info(`[SyncMyDep] Checking for existing Pull Request for branch ${headBranch}...`);
     // Query existing PRs
     const { data: pullRequests } = await octokit.rest.pulls.list({
         owner,
         repo,
-        state: 'open',
+        state: "open",
         head: `${owner}:${headBranch}`,
-        base: baseBranch
+        base: baseBranch,
     });
     let prNumber;
     let prUrl;
@@ -32427,7 +32442,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
             repo,
             pull_number: prNumber,
             title,
-            body
+            body,
         });
         await postIssueComment(octokit, owner, repo, prNumber, `🔄 **SyncMyDep Update**: Refreshed dependency synchronization and pushed latest fixes.`);
     }
@@ -32439,7 +32454,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
             title,
             body,
             head: headBranch,
-            base: baseBranch
+            base: baseBranch,
         });
         prNumber = newPr.number;
         prUrl = newPr.html_url;
@@ -32453,7 +32468,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
                 owner,
                 repo,
                 issue_number: prNumber,
-                labels
+                labels,
             });
         }
         catch (err) {
@@ -32468,7 +32483,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
                 owner,
                 repo,
                 issue_number: prNumber,
-                assignees
+                assignees,
             });
         }
         catch (err) {
@@ -32483,7 +32498,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
                 owner,
                 repo,
                 pull_number: prNumber,
-                reviewers
+                reviewers,
             });
         }
         catch (err) {
@@ -32494,7 +32509,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
     return {
         number: prNumber,
         url: prUrl,
-        isNew
+        isNew,
     };
 }
 
@@ -36566,7 +36581,7 @@ async function run() {
             }
             const prDetails = await getPullRequestDetails(octokit, owner, repo, prNumber);
             core.info(`[SyncMyDep] PR #${prNumber} head branch: ${prDetails.headBranch}`);
-            await configureGitUser(workspaceDir);
+            await configureGitUser(workspaceDir, octokit);
             await checkoutBranch(workspaceDir, prDetails.headBranch, prNumber);
             const pm = detectPackageManager(workspaceDir, pmInput);
             const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
@@ -36722,7 +36737,9 @@ async function run() {
             core.warning('[SyncMyDep] No github-token provided. Cannot push branch or create PR automatically.');
             return;
         }
-        await configureGitUser(workspaceDir);
+        const octokit = github.getOctokit(token);
+        const { owner, repo } = github.context.repo;
+        await configureGitUser(workspaceDir, octokit);
         // 9. Direct Push Mode on pull_request triggers
         if ((isPullRequest || directPush) && github.context.payload.pull_request) {
             const pr = github.context.payload.pull_request;
@@ -36756,8 +36773,6 @@ async function run() {
             core.info('[SyncMyDep] No changes committed.');
             return;
         }
-        const octokit = github.getOctokit(token);
-        const { owner, repo } = github.context.repo;
         let baseBranch = 'main';
         if (github.context.ref && github.context.ref.startsWith('refs/heads/')) {
             baseBranch = github.context.ref.replace('refs/heads/', '');

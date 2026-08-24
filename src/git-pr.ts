@@ -10,16 +10,33 @@ import {
 } from "./types";
 
 /**
- * Sets up git bot credentials. Defaults to syncmydep[bot].
+ * Sets up git bot credentials. Automatically uses authenticated PAT user if available.
  */
 export async function configureGitUser(
   workspaceDir: string,
-  userName = "syncmydep[bot]",
-  userEmail = "syncmydep[bot]@users.noreply.github.com",
+  octokit?: OctokitClient,
+  customName?: string,
+  customEmail?: string
 ): Promise<void> {
+  let userName = customName || 'syncmydep[bot]';
+  let userEmail = customEmail || 'syncmydep[bot]@users.noreply.github.com';
+
+  if (octokit && (!customName || !customEmail)) {
+    try {
+      const { data: user } = await octokit.rest.users.getAuthenticated();
+      if (user && user.login && user.login !== 'github-actions[bot]') {
+        userName = customName || user.name || user.login;
+        userEmail = customEmail || user.email || `${user.id}+${user.login}@users.noreply.github.com`;
+        core.info(`[SyncMyDep] Authenticated as @${user.login}. Git author set to ${userName} <${userEmail}>`);
+      }
+    } catch {
+      // Fallback to default
+    }
+  }
+
   const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
-  await exec.exec("git", ["config", "user.name", userName], options);
-  await exec.exec("git", ["config", "user.email", userEmail], options);
+  await exec.exec('git', ['config', 'user.name', userName], options);
+  await exec.exec('git', ['config', 'user.email', userEmail], options);
 }
 
 /**

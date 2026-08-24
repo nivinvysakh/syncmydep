@@ -140,7 +140,7 @@ async function run(): Promise<void> {
       const prDetails = await getPullRequestDetails(octokit, owner, repo, prNumber);
       core.info(`[SyncMyDep] PR #${prNumber} head branch: ${prDetails.headBranch}`);
 
-      await configureGitUser(workspaceDir);
+      await configureGitUser(workspaceDir, octokit);
       await checkoutBranch(workspaceDir, prDetails.headBranch, prNumber);
 
       const pm = detectPackageManager(workspaceDir, pmInput);
@@ -351,7 +351,10 @@ async function run(): Promise<void> {
       return;
     }
 
-    await configureGitUser(workspaceDir);
+    const octokit = github.getOctokit(token);
+    const { owner, repo } = github.context.repo;
+
+    await configureGitUser(workspaceDir, octokit);
 
     // 9. Direct Push Mode on pull_request triggers
     if ((isPullRequest || directPush) && github.context.payload.pull_request) {
@@ -396,9 +399,6 @@ async function run(): Promise<void> {
       core.info('[SyncMyDep] No changes committed.');
       return;
     }
-
-    const octokit = github.getOctokit(token);
-    const { owner, repo } = github.context.repo;
 
     let baseBranch = 'main';
     if (github.context.ref && github.context.ref.startsWith('refs/heads/')) {
