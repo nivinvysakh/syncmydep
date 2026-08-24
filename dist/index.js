@@ -32417,6 +32417,24 @@ async function postIssueComment(octokit, owner, repo, issueNumber, body) {
     }
 }
 /**
+ * Closes an open Pull Request using Octokit.
+ */
+async function closePullRequest(octokit, owner, repo, pullNumber) {
+    try {
+        await octokit.rest.pulls.update({
+            owner,
+            repo,
+            pull_number: pullNumber,
+            state: "closed",
+        });
+        lib_core.info(`[SyncMyDep] Successfully closed Pull Request #${pullNumber}.`);
+    }
+    catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        lib_core.warning(`Could not close PR #${pullNumber}: ${errMsg}`);
+    }
+}
+/**
  * Updates an existing comment on an issue or PR.
  */
 async function updateIssueComment(octokit, owner, repo, commentId, body) {
@@ -36524,7 +36542,7 @@ async function deleteLocalBranch(workspaceDir, branch) {
  * Deletes a remote branch on origin if it exists.
  */
 async function deleteRemoteBranch(workspaceDir, branch, octokit, owner, repo) {
-    core.info(`[SyncMyDep] Deleting remote branch origin/${branch}...`);
+    lib_core.info(`[SyncMyDep] Deleting remote branch origin/${branch}...`);
     if (octokit && owner && repo) {
         try {
             await octokit.rest.git.deleteRef({
@@ -36532,17 +36550,17 @@ async function deleteRemoteBranch(workspaceDir, branch, octokit, owner, repo) {
                 repo,
                 ref: `heads/${branch}`,
             });
-            core.info(`[SyncMyDep] Successfully deleted remote ref heads/${branch} via GitHub API.`);
+            lib_core.info(`[SyncMyDep] Successfully deleted remote ref heads/${branch} via GitHub API.`);
             return true;
         }
         catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
-            core.info(`[SyncMyDep] GitHub API deleteRef failed or ref did not exist: ${errMsg}`);
+            lib_core.info(`[SyncMyDep] GitHub API deleteRef failed or ref did not exist: ${errMsg}`);
         }
     }
     // Fallback via git command line
     const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
-    const exitCode = await exec.exec("git", ["push", "origin", "--delete", branch], options);
+    const exitCode = await lib_exec.exec("git", ["push", "origin", "--delete", branch], options);
     return exitCode === 0;
 }
 /**
@@ -36823,6 +36841,17 @@ async function run() {
                     assignees,
                     reviewers
                 });
+                return;
+            }
+            const isClose = commentBody.includes('close') || commentBody.includes('cancel');
+            if (isClose) {
+                lib_core.info(`[SyncMyDep] Closing Pull Request #${prNumber} as requested by @${commenter}...`);
+                await closePullRequest(octokit, owner, repo, prNumber);
+                await deleteRemoteBranch(workspaceDir, prDetails.headBranch, octokit, owner, repo);
+                if (comment?.id) {
+                    await addCommentReaction(octokit, owner, repo, comment.id, '+1');
+                }
+                await postIssueComment(octokit, owner, repo, prNumber, `🚪 **SyncMyDep**: Closed Pull Request #${prNumber} and cleaned up branch \`${prDetails.headBranch}\` as requested by @${commenter}.`);
                 return;
             }
             await checkoutBranch(workspaceDir, prDetails.headBranch, prNumber);

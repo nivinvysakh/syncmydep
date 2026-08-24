@@ -24,13 +24,14 @@ import {
   getPullRequestDetails,
   addCommentReaction,
   postIssueComment,
+  closePullRequest,
   createOrUpdatePullRequest
 } from './git-pr';
 
 import { loadConfigFile } from './config';
 import { detectWorkspace } from './workspace';
 import { ensurePackageManagerInstalled } from './installer';
-import { rebaseAndRedoProcess } from './rebase-pr';
+import { rebaseAndRedoProcess, deleteRemoteBranch } from './rebase-pr';
 import { buildMarkdownSummary, buildCommentSummary } from './summary';
 import { AuditInspectionResult } from './types';
 
@@ -174,6 +175,26 @@ async function run(): Promise<void> {
           assignees,
           reviewers
         });
+        return;
+      }
+
+      const isClose = commentBody.includes('close') || commentBody.includes('cancel');
+      if (isClose) {
+        core.info(`[SyncMyDep] Closing Pull Request #${prNumber} as requested by @${commenter}...`);
+        await closePullRequest(octokit, owner, repo, prNumber);
+        await deleteRemoteBranch(workspaceDir, prDetails.headBranch, octokit, owner, repo);
+
+        if (comment?.id) {
+          await addCommentReaction(octokit, owner, repo, comment.id, '+1');
+        }
+
+        await postIssueComment(
+          octokit,
+          owner,
+          repo,
+          prNumber,
+          `🚪 **SyncMyDep**: Closed Pull Request #${prNumber} and cleaned up branch \`${prDetails.headBranch}\` as requested by @${commenter}.`,
+        );
         return;
       }
 

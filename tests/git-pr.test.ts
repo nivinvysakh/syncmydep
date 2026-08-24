@@ -3,6 +3,7 @@ import {
   getPullRequestDetails,
   addCommentReaction,
   postIssueComment,
+  closePullRequest,
   configureGitUser,
 } from "../src/git-pr";
 import { OctokitClient } from "../src/types";
@@ -105,5 +106,25 @@ describe("git-pr helpers", () => {
       ["config", "user.email", "github-actions[bot]@users.noreply.github.com"],
       expect.objectContaining({ cwd: "/test/workspace" }),
     );
+  });
+
+  test("closePullRequest calls octokit pulls.update with state closed", async () => {
+    const mockPullsUpdate = jest.fn().mockResolvedValue({ data: { state: "closed" } });
+    const octokit = {
+      rest: {
+        pulls: {
+          update: mockPullsUpdate,
+        },
+      },
+    } as unknown as OctokitClient;
+
+    await closePullRequest(octokit, "owner", "repo", 42);
+
+    expect(mockPullsUpdate).toHaveBeenCalledWith({
+      owner: "owner",
+      repo: "repo",
+      pull_number: 42,
+      state: "closed",
+    });
   });
 });

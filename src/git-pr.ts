@@ -188,6 +188,29 @@ export async function postIssueComment(
 }
 
 /**
+ * Closes an open Pull Request using Octokit.
+ */
+export async function closePullRequest(
+  octokit: OctokitClient,
+  owner: string,
+  repo: string,
+  pullNumber: number,
+): Promise<void> {
+  try {
+    await octokit.rest.pulls.update({
+      owner,
+      repo,
+      pull_number: pullNumber,
+      state: "closed",
+    });
+    core.info(`[SyncMyDep] Successfully closed Pull Request #${pullNumber}.`);
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    core.warning(`Could not close PR #${pullNumber}: ${errMsg}`);
+  }
+}
+
+/**
  * Updates an existing comment on an issue or PR.
  */
 export async function updateIssueComment(
