@@ -18,8 +18,8 @@ export async function configureGitUser(
   customName?: string,
   customEmail?: string
 ): Promise<void> {
-  let userName = customName || 'syncmydep[bot]';
-  let userEmail = customEmail || 'syncmydep[bot]@users.noreply.github.com';
+  let userName = customName || 'SyncMyDep Bot';
+  let userEmail = customEmail || 'syncmydepbot@users.noreply.github.com';
 
   if (octokit && (!customName || !customEmail)) {
     try {

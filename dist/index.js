@@ -32304,8 +32304,8 @@ async function parseDependencyDiffs(workspaceDir, changedFiles) {
  * Sets up git bot credentials. Automatically uses authenticated PAT user if available.
  */
 async function configureGitUser(workspaceDir, octokit, customName, customEmail) {
-    let userName = customName || 'syncmydep[bot]';
-    let userEmail = customEmail || 'syncmydep[bot]@users.noreply.github.com';
+    let userName = customName || 'SyncMyDep Bot';
+    let userEmail = customEmail || 'syncmydepbot@users.noreply.github.com';
     if (octokit && (!customName || !customEmail)) {
         try {
             const { data: user } = await octokit.rest.users.getAuthenticated();
