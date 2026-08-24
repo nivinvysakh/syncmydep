@@ -89,7 +89,7 @@ describe("git-pr helpers", () => {
     });
   });
 
-  test("configureGitUser sets SyncMyDep Bot by default", async () => {
+  test("configureGitUser sets github-actions[bot] by default", async () => {
     const mockedExec = exec.exec as jest.MockedFunction<typeof exec.exec>;
     mockedExec.mockResolvedValue(0);
 
@@ -97,12 +97,12 @@ describe("git-pr helpers", () => {
 
     expect(mockedExec).toHaveBeenCalledWith(
       "git",
-      ["config", "user.name", "SyncMyDep Bot"],
+      ["config", "user.name", "github-actions[bot]"],
       expect.objectContaining({ cwd: "/test/workspace" }),
     );
     expect(mockedExec).toHaveBeenCalledWith(
       "git",
-      ["config", "user.email", "syncmydepbot@users.noreply.github.com"],
+      ["config", "user.email", "github-actions[bot]@users.noreply.github.com"],
       expect.objectContaining({ cwd: "/test/workspace" }),
     );
   });

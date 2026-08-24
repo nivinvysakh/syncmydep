@@ -30,7 +30,6 @@ import {
 import { loadConfigFile } from './config';
 import { detectWorkspace } from './workspace';
 import { ensurePackageManagerInstalled } from './installer';
-import { getGitHubAppToken } from './app-auth';
 import { buildMarkdownSummary, buildCommentSummary } from './summary';
 import { AuditInspectionResult } from './types';
 
@@ -44,14 +43,7 @@ async function run(): Promise<void> {
     const fileConfig = loadConfigFile(workspaceDir, customConfigPath);
 
     // 2. Resolve Action inputs (Action input > file config > default)
-    let token = core.getInput('github-token') || process.env.GITHUB_TOKEN;
-    const appId = core.getInput('app-id') || fileConfig.appId;
-    const privateKey = core.getInput('private-key') || fileConfig.privateKey;
-
-    if (appId && privateKey) {
-      const { owner, repo } = github.context.repo;
-      token = await getGitHubAppToken(appId, privateKey, owner, repo);
-    }
+    const token = core.getInput('github-token') || process.env.GITHUB_TOKEN;
     const pmInput = core.getInput('package-manager') || fileConfig.packageManager || 'auto';
     const syncLockfileOption = core.getInput('sync-lockfile') !== ''
       ? core.getBooleanInput('sync-lockfile')
