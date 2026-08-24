@@ -160,7 +160,7 @@ async function run(): Promise<void> {
           baseBranch: prDetails.baseBranch,
           targetBranch: prDetails.headBranch,
           prNumber,
-          commentId: comment?.id,
+          triggerCommentId: comment?.id,
           commenter,
           pm,
           yarnVariant,

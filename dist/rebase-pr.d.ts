@@ -7,6 +7,7 @@ export interface RebaseAndRedoOptions {
     baseBranch: string;
     targetBranch: string;
     prNumber?: number;
+    triggerCommentId?: number;
     commentId?: number;
     commenter?: string;
     pm: PackageManager;

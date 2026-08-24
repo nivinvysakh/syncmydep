@@ -32,6 +32,7 @@ export interface RebaseAndRedoOptions {
   baseBranch: string;
   targetBranch: string;
   prNumber?: number;
+  triggerCommentId?: number;
   commentId?: number;
   commenter?: string;
   pm: PackageManager;
@@ -168,6 +169,7 @@ export async function rebaseAndRedoProcess(
     baseBranch,
     targetBranch,
     prNumber,
+    triggerCommentId,
     commentId,
     commenter,
     pm,
@@ -183,18 +185,21 @@ export async function rebaseAndRedoProcess(
     reviewers = [],
   } = options;
 
-  core.info(
-    `[SyncMyDep] Starting Rebase & Redo process for branch: ${targetBranch} (base: ${baseBranch})`,
-  );
+  const userTriggerCommentId = triggerCommentId || commentId;
+  let botCommentId: number | undefined;
 
-  if (commentId) {
-    await updateIssueComment(
-      octokit,
-      owner,
-      repo,
-      commentId,
-      `🔄 **SyncMyDep**: Rebasing branch \`${targetBranch}\` onto \`${baseBranch}\` and generating a fresh dependency synchronization...`,
-    );
+  if (prNumber) {
+    try {
+      const { data: createdComment } = await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: prNumber,
+        body: `🔄 **SyncMyDep**: Rebasing branch \`${targetBranch}\` onto \`${baseBranch}\` and generating fresh dependency synchronization...`,
+      });
+      botCommentId = createdComment.id;
+    } catch {
+      // ignore
+    }
   }
 
   // 1. Recreate fresh branch from upstream base
@@ -232,13 +237,15 @@ export async function rebaseAndRedoProcess(
     );
 
     if (prNumber) {
-      if (commentId) {
-        await addCommentReaction(octokit, owner, repo, commentId, "hooray");
+      if (userTriggerCommentId) {
+        await addCommentReaction(octokit, owner, repo, userTriggerCommentId, "hooray");
+      }
+      if (botCommentId) {
         await updateIssueComment(
           octokit,
           owner,
           repo,
-          commentId,
+          botCommentId,
           `✅ **SyncMyDep**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\`. All dependencies are already up-to-date and synchronized!`,
         );
       } else {
@@ -247,7 +254,7 @@ export async function rebaseAndRedoProcess(
           owner,
           repo,
           prNumber,
-          `✅ **SyncMyDep Rebase**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\`. All dependencies are already up-to-date and synchronized!`,
+          `✅ **SyncMyDep**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\`. All dependencies are already up-to-date and synchronized!`,
         );
       }
     }
@@ -295,13 +302,15 @@ export async function rebaseAndRedoProcess(
       commenter,
     });
 
-    if (commentId) {
-      await addCommentReaction(octokit, owner, repo, commentId, "rocket");
+    if (userTriggerCommentId) {
+      await addCommentReaction(octokit, owner, repo, userTriggerCommentId, "rocket");
+    }
+    if (botCommentId) {
       await updateIssueComment(
         octokit,
         owner,
         repo,
-        commentId,
+        botCommentId,
         `🔄 **SyncMyDep**: Successfully rebased \`${targetBranch}\` onto \`${baseBranch}\` with fresh lockfile synchronization.\n\n${commentMarkdown}`,
       );
     } else {
