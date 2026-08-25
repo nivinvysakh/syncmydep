@@ -60,7 +60,6 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
-  workflows: write
 
 jobs:
   sync:
@@ -71,11 +70,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Run SyncMyDep
         uses: nivinvysakh/syncmydep@v1
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
           # Optional settings (also configurable via .syncmydep.yml):
           # verify-lockfile: "true"
           # run-build: "npm run build"
@@ -102,7 +102,6 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
-  workflows: write
 
 jobs:
   sync-pr-comment:
@@ -113,13 +112,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Run SyncMyDep
         uses: nivinvysakh/syncmydep@v1
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
           comment-trigger: "syncdep"
           require-owner: "true"
+          sync-lockfile: "true"
+          fix-audit: "true"
 ```
 
 ---
@@ -175,7 +177,7 @@ require-owner: true
 
 | Input               | Description                                                                          | Required | Default                                                     |
 | :------------------ | :----------------------------------------------------------------------------------- | :------: | :---------------------------------------------------------- |
-| `github-token`      | GitHub token for git push and opening PRs (`GITHUB_TOKEN` or PAT)                    |    No    | `${{ github.token }}`                                       |
+| `github-token`      | GitHub token for git push and opening PRs (`${{ secrets.GH_PAT \|\| secrets.GITHUB_TOKEN }}`) |    No    | `${{ github.token }}`                                       |
 | `package-manager`   | Package manager: `auto`, `npm`, `yarn`, `pnpm`, `bun`, `deno`                        |    No    | `auto`                                                      |
 | `working-directory` | Path to directory containing package manifest and lockfile                           |    No    | `.`                                                         |
 | `config-file`       | Optional path to custom `.syncmydep.yml` config file                                 |    No    | `""`                                                        |
@@ -210,7 +212,7 @@ require-owner: true
 
 ### Step 1: Add Workflow File
 
-Add `.github/workflows/syncmydep.yml` to your repository.
+Add `.github/workflows/syncmydep.yml` and/or `.github/workflows/syncmydep-comment.yml` to your repository.
 
 ### Step 2: Configure Repository Permissions
 
@@ -219,6 +221,19 @@ Add `.github/workflows/syncmydep.yml` to your repository.
    - ✅ Select **"Read and write permissions"**.
    - ✅ Check **"Allow GitHub Actions to create and approve pull requests"**.
 3. Click **Save**.
+
+### Step 3: (Recommended) Configure Personal Access Token (`GH_PAT`)
+
+By default, GitHub's `GITHUB_TOKEN` is restricted from pushing branches that contain changes to `.github/workflows/*` files or triggering downstream CI workflows on created PRs. Using a Personal Access Token (PAT) overcomes these restrictions:
+
+1. Go to GitHub **Settings** ➔ **Developer Settings** ➔ **Personal Access Tokens** ➔ **Tokens (classic)** (or Fine-grained tokens).
+2. Generate a token with the following scopes:
+   - `repo` (Full control of repository)
+   - `workflow` (Update GitHub Action workflows)
+3. In your target repository, navigate to **Settings** ➔ **Secrets and variables** ➔ **Actions**.
+4. Click **New repository secret**, name it **`GH_PAT`**, paste your token, and save.
+
+Your workflows configured with `token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}` will automatically use `GH_PAT` when present and fall back to `GITHUB_TOKEN`.
 
 ---
 

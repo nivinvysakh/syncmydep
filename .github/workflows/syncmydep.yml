@@ -19,7 +19,6 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
-  workflows: write
 
 jobs:
   sync-dependencies:
@@ -31,11 +30,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Run SyncMyDep
         uses: nivinvysakh/syncmydep@v1
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
           # Optional settings (can also be defined in .syncmydep.yml):
           # sync-lockfile: "true"
           # fix-audit: "true"
