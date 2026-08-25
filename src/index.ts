@@ -14,7 +14,9 @@ import {
   runAuditFix,
   getGitStatus,
   getGitDiffStat,
-  parseDependencyDiffs
+  parseDependencyDiffs,
+  verifyLockfileIntegrity,
+  runBuildSmokeTest
 } from './fixer';
 
 import {
@@ -24,14 +26,17 @@ import {
   getPullRequestDetails,
   addCommentReaction,
   postIssueComment,
+  closePullRequest,
   createOrUpdatePullRequest
 } from './git-pr';
 
 import { loadConfigFile } from './config';
 import { detectWorkspace } from './workspace';
 import { ensurePackageManagerInstalled } from './installer';
+import { restorePackageCache, savePackageCache } from './cache';
+import { rebaseAndRedoProcess, deleteRemoteBranch } from './rebase-pr';
 import { buildMarkdownSummary, buildCommentSummary } from './summary';
-import { AuditInspectionResult } from './types';
+import { AuditInspectionResult, BuildVerificationResult } from './types';
 
 async function run(): Promise<void> {
   try {
@@ -43,7 +48,7 @@ async function run(): Promise<void> {
     const fileConfig = loadConfigFile(workspaceDir, customConfigPath);
 
     // 2. Resolve Action inputs (Action input > file config > default)
-    const token = core.getInput('github-token') || process.env.GITHUB_TOKEN;
+    const token = core.getInput('github-token') || process.env.GH_PAT || process.env.GITHUB_TOKEN;
     const pmInput = core.getInput('package-manager') || fileConfig.packageManager || 'auto';
     const syncLockfileOption = core.getInput('sync-lockfile') !== ''
       ? core.getBooleanInput('sync-lockfile')
@@ -68,6 +73,20 @@ async function run(): Promise<void> {
     const requireOwner = core.getInput('require-owner') !== ''
       ? core.getBooleanInput('require-owner')
       : fileConfig.requireOwner ?? true;
+    const verifyLockfileOption = core.getInput('verify-lockfile') !== ''
+      ? core.getBooleanInput('verify-lockfile')
+      : fileConfig.verifyLockfile ?? true;
+    const runBuild = core.getInput('run-build') || fileConfig.runBuild || '';
+    const failOnBuildError = core.getInput('fail-on-build-error') !== ''
+      ? core.getBooleanInput('fail-on-build-error')
+      : fileConfig.failOnBuildError ?? false;
+    const autoMergeOption = core.getInput('auto-merge') !== ''
+      ? core.getBooleanInput('auto-merge')
+      : fileConfig.autoMerge ?? false;
+    const autoMergeMethod = (core.getInput('auto-merge-method') || fileConfig.autoMergeMethod || 'squash').toLowerCase() as 'squash' | 'merge' | 'rebase';
+    const cacheOption = core.getInput('cache') !== ''
+      ? core.getBooleanInput('cache')
+      : fileConfig.cache ?? true;
 
     const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
@@ -84,6 +103,13 @@ async function run(): Promise<void> {
     const eventName = github.context.eventName;
     const isIssueComment = eventName === 'issue_comment';
     const isPullRequest = eventName === 'pull_request';
+
+    // Prevent recursive runs when commits are pushed to the sync branch itself
+    const currentRef = github.context.ref || '';
+    if (!isIssueComment && !isPullRequest && (currentRef === `refs/heads/${branchName}` || currentRef.endsWith(`/${branchName}`))) {
+      core.info(`[SyncMyDep] Triggered on PR branch '${branchName}' itself. Skipping to prevent recursion.`);
+      return;
+    }
 
     // 4. Handle PR Comment Trigger
     if (isIssueComment) {
@@ -140,14 +166,68 @@ async function run(): Promise<void> {
       const prDetails = await getPullRequestDetails(octokit, owner, repo, prNumber);
       core.info(`[SyncMyDep] PR #${prNumber} head branch: ${prDetails.headBranch}`);
 
-      await configureGitUser(workspaceDir);
-      await checkoutBranch(workspaceDir, prDetails.headBranch, prNumber);
+      await configureGitUser(workspaceDir, octokit);
 
       const pm = detectPackageManager(workspaceDir, pmInput);
       const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
       core.info(`[SyncMyDep] Active package manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
 
       await ensurePackageManagerInstalled(pm);
+
+      const isRebase = commentBody.includes('rebase') || commentBody.includes('reset') || commentBody.includes('fresh');
+      if (isRebase) {
+        core.info(`[SyncMyDep] Executing rebase and redo for PR #${prNumber}...`);
+        await rebaseAndRedoProcess({
+          workspaceDir,
+          octokit,
+          owner,
+          repo,
+          baseBranch: prDetails.baseBranch,
+          targetBranch: prDetails.headBranch,
+          prNumber,
+          triggerCommentId: comment?.id,
+          commenter,
+          pm,
+          yarnVariant,
+          workspaceInfo,
+          syncLockfileOption,
+          fixAuditOption,
+          auditLevel,
+          commitMessage,
+          prTitle,
+          labels,
+          assignees,
+          reviewers,
+          verifyLockfile: verifyLockfileOption,
+          runBuild,
+          failOnBuildError,
+          autoMerge: autoMergeOption,
+          autoMergeMethod
+        });
+        return;
+      }
+
+      const isClose = commentBody.includes('close') || commentBody.includes('cancel');
+      if (isClose) {
+        core.info(`[SyncMyDep] Closing Pull Request #${prNumber} as requested by @${commenter}...`);
+        await closePullRequest(octokit, owner, repo, prNumber);
+        await deleteRemoteBranch(workspaceDir, prDetails.headBranch, octokit, owner, repo);
+
+        if (comment?.id) {
+          await addCommentReaction(octokit, owner, repo, comment.id, '+1');
+        }
+
+        await postIssueComment(
+          octokit,
+          owner,
+          repo,
+          prNumber,
+          `🚪 **SyncMyDep**: Closed Pull Request #${prNumber} and cleaned up branch \`${prDetails.headBranch}\` as requested by @${commenter}.`,
+        );
+        return;
+      }
+
+      await checkoutBranch(workspaceDir, prDetails.headBranch, prNumber);
 
       if (!checkPackageJsonExists(workspaceDir, pm)) {
         throw new Error(`Package manifest was not found in ${workspaceDir} on branch ${prDetails.headBranch}`);
@@ -254,6 +334,12 @@ async function run(): Promise<void> {
       throw new Error(`Package manifest was not found in ${workspaceDir}`);
     }
 
+    let cacheKey: string | undefined = undefined;
+    if (cacheOption) {
+      const cacheRestore = await restorePackageCache(workspaceDir, pm, yarnVariant);
+      cacheKey = cacheRestore.cacheKey;
+    }
+
     let auditBefore: AuditInspectionResult | null = null;
     let auditAfter: AuditInspectionResult | null = null;
 
@@ -273,6 +359,27 @@ async function run(): Promise<void> {
       const auditResult = await runAuditFix(workspaceDir, pm, auditLevel);
       fixedAudit = auditResult.success;
       auditAfter = await inspectAudit(workspaceDir, pm);
+    }
+
+    if (cacheOption && cacheKey) {
+      await savePackageCache(workspaceDir, pm, cacheKey, yarnVariant);
+    }
+
+    // Lockfile integrity verification
+    let lockfileVerified: boolean | undefined = undefined;
+    if (verifyLockfileOption) {
+      const integrityResult = await verifyLockfileIntegrity(workspaceDir, pm, yarnVariant);
+      lockfileVerified = integrityResult.success;
+    }
+
+    // Build smoke test
+    let buildResult: BuildVerificationResult | null = null;
+    if (runBuild && !checkOnly) {
+      buildResult = await runBuildSmokeTest(workspaceDir, runBuild);
+      if (!buildResult.success && failOnBuildError) {
+        core.setFailed(`[SyncMyDep] Build smoke test failed: ${buildResult.output}`);
+        return;
+      }
     }
 
     const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
@@ -343,7 +450,9 @@ async function run(): Promise<void> {
       syncedLockfile,
       fixedAudit,
       auditBefore,
-      auditAfter
+      auditAfter,
+      lockfileVerified,
+      buildResult
     });
 
     if (!token) {
@@ -351,7 +460,10 @@ async function run(): Promise<void> {
       return;
     }
 
-    await configureGitUser(workspaceDir);
+    const octokit = github.getOctokit(token);
+    const { owner, repo } = github.context.repo;
+
+    await configureGitUser(workspaceDir, octokit);
 
     // 9. Direct Push Mode on pull_request triggers
     if ((isPullRequest || directPush) && github.context.payload.pull_request) {
@@ -397,9 +509,6 @@ async function run(): Promise<void> {
       return;
     }
 
-    const octokit = github.getOctokit(token);
-    const { owner, repo } = github.context.repo;
-
     let baseBranch = 'main';
     if (github.context.ref && github.context.ref.startsWith('refs/heads/')) {
       baseBranch = github.context.ref.replace('refs/heads/', '');
@@ -422,7 +531,9 @@ async function run(): Promise<void> {
       body: prBody,
       labels,
       assignees,
-      reviewers
+      reviewers,
+      autoMerge: autoMergeOption,
+      autoMergeMethod
     });
 
     core.setOutput('pull-request-number', String(prResult.number));

@@ -1,14 +1,17 @@
-name: Sync Dependencies & Check Lockfile
+name: Sync Dependencies & Fix Vulnerabilities
 
 on:
   schedule:
-    # Run every Monday at 08:00 UTC
-    - cron: '0 8 * * 1'
-  workflow_dispatch:
+    # Run weekly on Monday at 08:00 UTC
+    - cron: "0 8 * * 1"
+  workflow_dispatch: # Allows manual one-click trigger
   push:
     paths:
-      - 'package.json'
-      - '.syncmydep.yml'
+      - "package.json"
+      - ".syncmydep.yml"
+      - "pnpm-workspace.yaml"
+      - "bun.lock"
+      - "deno.json"
     branches:
       - main
 
@@ -19,36 +22,22 @@ permissions:
 
 jobs:
   sync-dependencies:
-    name: Check & Fix Dependencies
+    name: Sync Dependencies & Open PR
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
+      - name: Run SyncMyDep
+        uses: nivinvysakh/syncmydep@v1
         with:
-          node-version: 20
-          cache: 'npm'
-
-      - name: Run SyncMyDep Action
-        id: syncmydep
-        uses: nivinvysakh/syncmydep@main
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          package-manager: 'auto'
-          sync-lockfile: 'true'
-          fix-audit: 'true'
-          audit-level: 'moderate'
-          pr-branch: 'syncmydep/dependency-fix'
-          pr-title: 'chore(deps): synchronize package.json and lockfile'
-          commit-message: 'chore(deps): synchronize package.json and lockfile'
-          pr-labels: 'dependencies, automated-pr'
-
-      - name: Log Action Output
-        if: steps.syncmydep.outputs.changes-detected == 'true'
-        run: |
-          echo "Pull Request opened: ${{ steps.syncmydep.outputs.pull-request-url }}"
+          github-token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          # Optional settings (can also be defined in .syncmydep.yml):
+          # sync-lockfile: "true"
+          # fix-audit: "true"
+          # verify-lockfile: "true"
+          # auto-merge: "false"

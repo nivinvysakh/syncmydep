@@ -1,8 +1,8 @@
-import { CommitAndPushParams, CreateOrUpdatePullRequestParams, PullRequestResult, PullRequestDetails, CommentReaction, OctokitClient } from './types';
+import { CommitAndPushParams, CreateOrUpdatePullRequestParams, PullRequestResult, PullRequestDetails, CommentReaction, OctokitClient } from "./types";
 /**
- * Sets up git bot credentials.
+ * Sets up git bot credentials. Automatically uses authenticated PAT user if available.
  */
-export declare function configureGitUser(workspaceDir: string): Promise<void>;
+export declare function configureGitUser(workspaceDir: string, octokit?: OctokitClient, customName?: string, customEmail?: string): Promise<void>;
 /**
  * Checks out a specific branch locally and pulls latest if available.
  */
@@ -10,7 +10,7 @@ export declare function checkoutBranch(workspaceDir: string, branch: string, prN
 /**
  * Creates/checks out a branch, commits modified files, and pushes to origin.
  */
-export declare function commitAndPushChanges({ workspaceDir, branch, commitMessage, files }: CommitAndPushParams): Promise<boolean>;
+export declare function commitAndPushChanges({ workspaceDir, branch, commitMessage, files, }: CommitAndPushParams): Promise<boolean>;
 /**
  * Fetches pull request details from GitHub API.
  */
@@ -24,6 +24,18 @@ export declare function addCommentReaction(octokit: OctokitClient, owner: string
  */
 export declare function postIssueComment(octokit: OctokitClient, owner: string, repo: string, issueNumber: number, body: string): Promise<void>;
 /**
+ * Closes an open Pull Request using Octokit.
+ */
+export declare function closePullRequest(octokit: OctokitClient, owner: string, repo: string, pullNumber: number): Promise<void>;
+/**
+ * Updates an existing comment on an issue or PR.
+ */
+export declare function updateIssueComment(octokit: OctokitClient, owner: string, repo: string, commentId: number, body: string): Promise<void>;
+/**
+ * Enables GitHub native auto-merge on a Pull Request via GraphQL API.
+ */
+export declare function enablePullRequestAutoMerge(octokit: OctokitClient, pullRequestNodeId: string, mergeMethod?: 'squash' | 'merge' | 'rebase'): Promise<boolean>;
+/**
  * Creates or updates a GitHub Pull Request using Octokit.
  */
-export declare function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, headBranch, title, body, labels, assignees, reviewers }: CreateOrUpdatePullRequestParams): Promise<PullRequestResult>;
+export declare function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, headBranch, title, body, labels, assignees, reviewers, autoMerge, autoMergeMethod, }: CreateOrUpdatePullRequestParams): Promise<PullRequestResult>;

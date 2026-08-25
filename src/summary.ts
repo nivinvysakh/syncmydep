@@ -1,4 +1,29 @@
-import { SummaryOptions, CommentSummaryOptions, DependencyDiff } from './types';
+import {
+  SummaryOptions,
+  CommentSummaryOptions,
+  DependencyDiff,
+  VulnerabilityAdvisory,
+  AuditInspectionResult
+} from './types';
+
+/**
+ * Maps severity level to badge/icon formatted text.
+ */
+function formatSeverity(sev: string): string {
+  switch (sev.toLowerCase()) {
+    case 'critical':
+      return '🔴 **Critical**';
+    case 'high':
+      return '🟠 **High**';
+    case 'moderate':
+    case 'medium':
+      return '🟡 **Moderate**';
+    case 'low':
+      return '🔵 **Low**';
+    default:
+      return '⚪ **Info**';
+  }
+}
 
 /**
  * Builds a rich Markdown description for the Pull Request and GitHub Step Summary.
@@ -13,7 +38,9 @@ export function buildMarkdownSummary({
   syncedLockfile,
   fixedAudit,
   auditBefore,
-  auditAfter
+  auditAfter,
+  lockfileVerified,
+  buildResult
 }: SummaryOptions): string {
   const pmDisplay = pm === 'yarn' && yarnVariant === 'berry' ? 'yarn (berry)' : pm;
   let md = `## 🤖 SyncMyDep: Automated Dependency Synchronization\n\n`;
@@ -25,11 +52,39 @@ export function buildMarkdownSummary({
     md += `- **Monorepo / Workspace**: \`${workspaceInfo.type}\` (${workspaceInfo.packages.length} workspace packages)\n`;
   }
   md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
-  md += `- **Security Audit Fix**: ${fixedAudit ? '✅ Applied' : '⏭️ Skipped'}\n`;
+  md += `- **Security Audit Fix**: ${formatAuditStatus(fixedAudit, auditBefore, auditAfter)}\n`;
+  if (lockfileVerified !== undefined) {
+    md += `- **Lockfile Integrity Verification**: ${lockfileVerified ? '✅ Passed (dry-run installation verified)' : '⚠️ Warning (dry-run inspection failed)'}\n`;
+  }
+  if (buildResult) {
+    md += `- **Build Smoke Test**: ${buildResult.success ? `✅ Passed (\`${buildResult.command}\`)` : `⚠️ Failed (\`${buildResult.command}\`)`}\n`;
+  }
   md += `- **Modified Files**: ${changedFiles.length} file(s)\n\n`;
 
   if (dependencyDiffs && dependencyDiffs.length > 0) {
     md += buildDependencyDiffTable(dependencyDiffs);
+  }
+
+  if (auditBefore && auditBefore.advisories && auditBefore.advisories.length > 0) {
+    md += buildAdvisoryTable(auditBefore.advisories, fixedAudit);
+  } else if (auditBefore && auditBefore.total > 0) {
+    md += `### 🛡️ Vulnerability Audit\n\n`;
+    md += `- **Initial Vulnerabilities Detected**: ${auditBefore.total}\n`;
+    if (auditAfter) {
+      md += `- **Remaining Vulnerabilities After Fix**: ${auditAfter.total}\n`;
+    }
+    if (auditBefore.summary) {
+      md += `\n<details>\n<summary>View vulnerability breakdown</summary>\n\n`;
+      md += `\`\`\`json\n${JSON.stringify(auditBefore.summary, null, 2)}\n\`\`\`\n`;
+      md += `</details>\n\n`;
+    }
+  }
+
+  if (buildResult && !buildResult.success && buildResult.output) {
+    md += `### ⚠️ Build Smoke Test Logs\n\n`;
+    md += `<details>\n<summary>Click to view build error logs</summary>\n\n`;
+    md += `\`\`\`text\n${buildResult.output.slice(0, 3000)}\n\`\`\`\n`;
+    md += `</details>\n\n`;
   }
 
   md += `### 📁 Modified Dependency Files\n\n`;
@@ -45,23 +100,10 @@ export function buildMarkdownSummary({
     md += `\`\`\`text\n${diffStat}\n\`\`\`\n\n`;
   }
 
-  if (auditBefore && auditBefore.total > 0) {
-    md += `### 🛡️ Vulnerability Audit\n\n`;
-    md += `- **Initial Vulnerabilities Detected**: ${auditBefore.total}\n`;
-    if (auditAfter) {
-      md += `- **Remaining Vulnerabilities After Fix**: ${auditAfter.total}\n`;
-    }
-    if (auditBefore.summary) {
-      md += `\n<details>\n<summary>View vulnerability breakdown</summary>\n\n`;
-      md += `\`\`\`json\n${JSON.stringify(auditBefore.summary, null, 2)}\n\`\`\`\n`;
-      md += `</details>\n\n`;
-    }
-  }
-
   md += `### 🔍 Maintainer Checklist\n\n`;
   md += `- [ ] Verify automated CI test results pass.\n`;
-  md += `- [ ] Review any package version changes in \`package.json\` / lockfiles.\n`;
-  md += `- [ ] Merge this PR to ensure your repository dependencies stay synchronized and secure.\n\n`;
+  md += `- [ ] Review package version changes in \`package.json\` / lockfiles.\n`;
+  md += `- [ ] Merge this PR to keep repository dependencies synchronized and secure.\n\n`;
 
   md += `---\n*Generated automatically by [SyncMyDep GitHub Action](https://github.com/nivinvysakh/syncmydep).*`;
 
@@ -82,6 +124,8 @@ export function buildCommentSummary({
   fixedAudit,
   auditBefore,
   auditAfter,
+  lockfileVerified,
+  buildResult,
   branch,
   commenter
 }: CommentSummaryOptions): string {
@@ -97,11 +141,27 @@ export function buildCommentSummary({
     md += `- **Monorepo / Workspace**: \`${workspaceInfo.type}\` (${workspaceInfo.packages.length} packages)\n`;
   }
   md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
-  md += `- **Security Audit Fix**: ${fixedAudit ? '✅ Applied' : '⏭️ Skipped'}\n`;
+  md += `- **Security Audit Fix**: ${formatAuditStatus(fixedAudit, auditBefore, auditAfter)}\n`;
+  if (lockfileVerified !== undefined) {
+    md += `- **Lockfile Integrity**: ${lockfileVerified ? '✅ Passed' : '⚠️ Warning'}\n`;
+  }
+  if (buildResult) {
+    md += `- **Build Smoke Test**: ${buildResult.success ? `✅ Passed` : `⚠️ Failed`}\n`;
+  }
   md += `- **Files Updated**: ${changedFiles.length} file(s)\n\n`;
 
   if (dependencyDiffs && dependencyDiffs.length > 0) {
     md += buildDependencyDiffTable(dependencyDiffs);
+  }
+
+  if (auditBefore && auditBefore.advisories && auditBefore.advisories.length > 0) {
+    md += buildAdvisoryTable(auditBefore.advisories, fixedAudit);
+  } else if (auditBefore && auditBefore.total > 0) {
+    md += `#### 🛡️ Vulnerability Audit\n`;
+    md += `- **Initial Vulnerabilities**: ${auditBefore.total}\n`;
+    if (auditAfter) {
+      md += `- **Remaining Vulnerabilities**: ${auditAfter.total}\n`;
+    }
   }
 
   md += `#### 📁 Modified Dependency Files\n`;
@@ -117,41 +177,117 @@ export function buildCommentSummary({
     md += `\`\`\`text\n${diffStat}\n\`\`\`\n\n`;
   }
 
-  if (auditBefore && auditBefore.total > 0) {
-    md += `#### 🛡️ Vulnerability Audit\n`;
-    md += `- **Initial Vulnerabilities**: ${auditBefore.total}\n`;
-    if (auditAfter) {
-      md += `- **Remaining Vulnerabilities**: ${auditAfter.total}\n`;
-    }
-    if (auditBefore.summary) {
-      md += `\n<details>\n<summary>View vulnerability breakdown</summary>\n\n`;
-      md += `\`\`\`json\n${JSON.stringify(auditBefore.summary, null, 2)}\n\`\`\`\n`;
-      md += `</details>\n\n`;
-    }
-  }
-
   md += `---\n*Pushed directly to \`${branch}\` by [SyncMyDep](https://github.com/nivinvysakh/syncmydep).*`;
 
   return md;
 }
 
 /**
+ * Formats a descriptive and informative security audit status string.
+ */
+function formatAuditStatus(
+  fixedAudit: boolean,
+  auditBefore: AuditInspectionResult | null,
+  auditAfter: AuditInspectionResult | null
+): string {
+  if (auditBefore === null) {
+    return fixedAudit ? '✅ Applied' : '⏭️ Skipped';
+  }
+
+  if (auditBefore.total === 0) {
+    return '✅ Clean (0 vulnerabilities detected)';
+  }
+
+  if (auditAfter) {
+    if (auditAfter.total === 0) {
+      return `✅ Applied (All ${auditBefore.total} vulnerabilities patched)`;
+    }
+    if (auditAfter.total < auditBefore.total) {
+      const fixedCount = auditBefore.total - auditAfter.total;
+      return `🔄 Partially Applied (${fixedCount} patched, ${auditAfter.total} require breaking changes)`;
+    }
+    if (auditAfter.total >= auditBefore.total) {
+      return `⚠️ Attempted (${auditBefore.total} require breaking major version upgrade / manual review)`;
+    }
+  }
+
+  return fixedAudit ? '✅ Applied' : '⏭️ Skipped';
+}
+
+/**
  * Generates a markdown diff table for changed package versions.
  */
 function buildDependencyDiffTable(diffs: DependencyDiff[]): string {
-  let md = `### 🔄 Package Version Changes\n\n`;
-  md += `| Package | Old Version | New Version | Change |\n`;
-  md += `| :--- | :--- | :--- | :--- |\n`;
+  const directDiffs = diffs.filter((d) => d.type === 'prod' || d.type === 'dev');
+  const transitiveDiffs = diffs.filter((d) => d.type === 'transitive');
 
-  for (const diff of diffs) {
+  let md = `### 🔄 Package Version Changes\n\n`;
+
+  const renderRow = (diff: DependencyDiff) => {
     const oldV = diff.oldVersion ? `\`${diff.oldVersion}\`` : '—';
     const newV = diff.newVersion ? `\`${diff.newVersion}\`` : '—';
-    let statusIcon = '🔄 Updated';
-    if (diff.changeType === 'added') statusIcon = '✨ Added';
-    if (diff.changeType === 'removed') statusIcon = '🗑️ Removed';
+    let statusText: string = diff.reason || 'Direct Update';
+    if (diff.changeType === 'added') statusText = '✨ Added';
+    if (diff.changeType === 'removed') statusText = '🗑️ Removed';
+    if (diff.reason === 'Lockfile Drift') statusText = '🔒 Lockfile Drift';
+    if (diff.reason === 'Direct Update' && diff.changeType === 'upgraded') statusText = '🔄 Direct Update';
+    return `| \`${diff.name}\` | ${oldV} | ${newV} | ${statusText} |\n`;
+  };
 
-    md += `| \`${diff.name}\` | ${oldV} | ${newV} | ${statusIcon} |\n`;
+  if (directDiffs.length > 0) {
+    md += `| Package | Old Version | New Version | Reason / Type |\n`;
+    md += `| :--- | :--- | :--- | :--- |\n`;
+    for (const diff of directDiffs) {
+      md += renderRow(diff);
+    }
+    md += `\n`;
   }
-  md += `\n`;
+
+  if (transitiveDiffs.length > 0) {
+    if (directDiffs.length === 0 && transitiveDiffs.length <= 5) {
+      md += `| Package | Old Version | New Version | Reason / Type |\n`;
+      md += `| :--- | :--- | :--- | :--- |\n`;
+      for (const diff of transitiveDiffs) {
+        md += renderRow(diff);
+      }
+      md += `\n`;
+    } else {
+      md += `<details>\n<summary>🔒 <b>${transitiveDiffs.length} Sub-dependency Updates (Lockfile Drift)</b> (Click to expand)</summary>\n\n`;
+      md += `| Package | Old Version | New Version | Reason / Type |\n`;
+      md += `| :--- | :--- | :--- | :--- |\n`;
+      for (const diff of transitiveDiffs) {
+        md += renderRow(diff);
+      }
+      md += `\n</details>\n\n`;
+    }
+  }
+
+  return md;
+}
+
+/**
+ * Generates a markdown disclosure table for detected security advisories.
+ */
+function buildAdvisoryTable(advisories: VulnerabilityAdvisory[], fixed: boolean): string {
+  let md = `### 🛡️ Vulnerability & Security Advisory Disclosure\n\n`;
+  md += `The following security advisories were identified${fixed ? ' and patched' : ''} (Total: **${advisories.length}**):\n\n`;
+
+  let table = `| Severity | Advisory / CVE | Package | Patched In | Title |\n`;
+  table += `| :--- | :--- | :--- | :--- | :--- |\n`;
+
+  for (const adv of advisories) {
+    const idLink = adv.url ? `[${adv.id}](${adv.url})` : adv.id;
+    const patched = adv.patchedVersions ? `\`${adv.patchedVersions}\`` : '—';
+    table += `| ${formatSeverity(adv.severity)} | ${idLink} | \`${adv.package}\` | ${patched} | ${adv.title} |\n`;
+  }
+
+  if (advisories.length <= 5) {
+    md += `${table}\n`;
+  } else {
+    md += `<details>\n<summary>🛡️ <b>View all ${advisories.length} Security Advisories</b> (Click to expand)</summary>\n\n`;
+    md += `${table}\n`;
+    md += `</details>\n\n`;
+  }
+
   return md;
 }

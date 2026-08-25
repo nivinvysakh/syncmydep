@@ -1,4 +1,10 @@
-import { getGitStatus, syncLockfile, parseDependencyDiffs } from '../src/fixer';
+import {
+  getGitStatus,
+  syncLockfile,
+  parseDependencyDiffs,
+  verifyLockfileIntegrity,
+  runBuildSmokeTest
+} from '../src/fixer';
 import * as exec from '@actions/exec';
 
 jest.mock('@actions/exec');
@@ -67,6 +73,31 @@ describe('fixer', () => {
     expect(lucideDiff).toBeDefined();
     expect(lucideDiff?.newVersion).toBe('^0.300.0');
     expect(lucideDiff?.changeType).toBe('added');
+  });
+
+  test('verifyLockfileIntegrity calls dry-run or frozen check', async () => {
+    (exec.exec as jest.MockedFunction<typeof exec.exec>).mockResolvedValue(0);
+
+    const npmResult = await verifyLockfileIntegrity('/fake/dir', 'npm');
+    expect(npmResult.success).toBe(true);
+    expect(exec.exec).toHaveBeenCalledWith('npm', ['ci', '--dry-run'], expect.any(Object));
+
+    const pnpmResult = await verifyLockfileIntegrity('/fake/dir', 'pnpm');
+    expect(pnpmResult.success).toBe(true);
+    expect(exec.exec).toHaveBeenCalledWith('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], expect.any(Object));
+
+    const bunResult = await verifyLockfileIntegrity('/fake/dir', 'bun');
+    expect(bunResult.success).toBe(true);
+    expect(exec.exec).toHaveBeenCalledWith('bun', ['install', '--frozen-lockfile'], expect.any(Object));
+  });
+
+  test('runBuildSmokeTest executes build command', async () => {
+    (exec.exec as jest.MockedFunction<typeof exec.exec>).mockResolvedValue(0);
+
+    const result = await runBuildSmokeTest('/fake/dir', 'npm run build');
+    expect(result.success).toBe(true);
+    expect(result.command).toBe('npm run build');
+    expect(exec.exec).toHaveBeenCalledWith('npm run build', [], expect.any(Object));
   });
 
   test('getGitStatus returns hasChanges: false when no dependency files are modified', async () => {

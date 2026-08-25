@@ -31,7 +31,12 @@ describe('config loader', () => {
       'pr-labels:',
       '  - dependencies',
       '  - automated-pr',
-      'require-owner: true'
+      'require-owner: true',
+      'verify-lockfile: true',
+      'run-build: "npm run build"',
+      'fail-on-build-error: true',
+      'auto-merge: true',
+      'auto-merge-method: squash'
     ].join('\n');
 
     fs.writeFileSync(path.join(tmpDir, '.syncmydep.yml'), yamlContent);
@@ -46,6 +51,11 @@ describe('config loader', () => {
     expect(config.prBranch).toBe('custom/deps-sync');
     expect(config.prLabels).toEqual(['dependencies', 'automated-pr']);
     expect(config.requireOwner).toBe(true);
+    expect(config.verifyLockfile).toBe(true);
+    expect(config.runBuild).toBe('npm run build');
+    expect(config.failOnBuildError).toBe(true);
+    expect(config.autoMerge).toBe(true);
+    expect(config.autoMergeMethod).toBe('squash');
   });
 
   test('loads and parses .syncmydeprc.json properly', () => {

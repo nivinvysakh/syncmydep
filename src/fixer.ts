@@ -1,6 +1,13 @@
 import * as exec from '@actions/exec';
 import * as core from '@actions/core';
-import { PackageManager, YarnVariant, SyncResult, GitStatusResult, DependencyDiff } from './types';
+import {
+  PackageManager,
+  YarnVariant,
+  SyncResult,
+  GitStatusResult,
+  DependencyDiff,
+  BuildVerificationResult
+} from './types';
 
 /**
  * Runs the appropriate command to synchronize the lockfile without running build scripts.
@@ -226,81 +233,278 @@ export async function getGitDiffStat(workspaceDir: string, files: string[]): Pro
 }
 
 /**
- * Parses package.json diffs to extract added, upgraded, or removed dependency items.
+ * Parses package.json and lockfile diffs to extract added, upgraded, or removed dependency items.
  */
 export async function parseDependencyDiffs(
   workspaceDir: string,
   changedFiles: string[]
 ): Promise<DependencyDiff[]> {
-  const pkgFiles = changedFiles.filter((f) => f.endsWith('package.json'));
-  if (pkgFiles.length === 0) return [];
+  const diffs: DependencyDiff[] = [];
+  const handledPackages = new Set<string>();
 
-  let diffText = '';
+  // 1. Direct dependencies from package.json
+  const pkgFiles = changedFiles.filter((f) => f.endsWith('package.json'));
+  if (pkgFiles.length > 0) {
+    let pkgDiffText = '';
+    const options = {
+      cwd: workspaceDir,
+      ignoreReturnCode: true,
+      silent: true,
+      listeners: {
+        stdout: (data: Buffer) => {
+          pkgDiffText += data.toString();
+        }
+      }
+    };
+
+    await exec.exec('git', ['diff', '-U1', '--', ...pkgFiles], options);
+
+    if (pkgDiffText) {
+      const lines = pkgDiffText.split('\n');
+      const removedMap = new Map<string, string>();
+      const addedMap = new Map<string, string>();
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('-') && !trimmed.startsWith('---')) {
+          const match = trimmed.match(/^-\s*"([^"]+)":\s*"([^"]+)"/);
+          if (match) {
+            removedMap.set(match[1], match[2]);
+          }
+        } else if (trimmed.startsWith('+') && !trimmed.startsWith('+++')) {
+          const match = trimmed.match(/^\+\s*"([^"]+)":\s*"([^"]+)"/);
+          if (match) {
+            addedMap.set(match[1], match[2]);
+          }
+        }
+      }
+
+      // Detect upgrades/downgrades & added
+      for (const [pkg, newVer] of addedMap.entries()) {
+        handledPackages.add(pkg);
+        if (removedMap.has(pkg)) {
+          const oldVer = removedMap.get(pkg)!;
+          removedMap.delete(pkg);
+          diffs.push({
+            name: pkg,
+            type: 'prod',
+            oldVersion: oldVer,
+            newVersion: newVer,
+            changeType: 'upgraded',
+            reason: 'Direct Update'
+          });
+        } else {
+          diffs.push({
+            name: pkg,
+            type: 'prod',
+            newVersion: newVer,
+            changeType: 'added',
+            reason: 'Direct Update'
+          });
+        }
+      }
+
+      // Remaining in removedMap are deletions
+      for (const [pkg, oldVer] of removedMap.entries()) {
+        handledPackages.add(pkg);
+        diffs.push({
+          name: pkg,
+          type: 'prod',
+          oldVersion: oldVer,
+          changeType: 'removed',
+          reason: 'Direct Update'
+        });
+      }
+    }
+  }
+
+  // 2. Lockfile diffs for transitive dependencies or lockfile drift
+  const lockFiles = changedFiles.filter(
+    (f) =>
+      f.endsWith('package-lock.json') ||
+      f.endsWith('yarn.lock') ||
+      f.endsWith('pnpm-lock.yaml') ||
+      f.endsWith('bun.lock')
+  );
+
+  if (lockFiles.length > 0) {
+    let lockDiffText = '';
+    const lockOptions = {
+      cwd: workspaceDir,
+      ignoreReturnCode: true,
+      silent: true,
+      listeners: {
+        stdout: (data: Buffer) => {
+          lockDiffText += data.toString();
+        }
+      }
+    };
+
+    await exec.exec('git', ['diff', '-U3', '--', ...lockFiles], lockOptions);
+
+    if (lockDiffText) {
+      const lockLines = lockDiffText.split('\n');
+      let currentPkg: string | null = null;
+      let oldVersion: string | null = null;
+      let newVersion: string | null = null;
+
+      for (let i = 0; i < lockLines.length; i++) {
+        const line = lockLines[i];
+
+        // Match package-lock node_modules entry
+        const nodeModulesMatch = line.match(/"node_modules\/((?:@[^/]+\/)?[^/"]+)":/);
+        if (nodeModulesMatch) {
+          currentPkg = nodeModulesMatch[1];
+          oldVersion = null;
+          newVersion = null;
+        }
+
+        // Match yarn.lock or pnpm header
+        const yarnPkgMatch = line.match(/^"?((?:@[^/]+\/)?[^@\s"]+)@/);
+        if (yarnPkgMatch && !line.startsWith('-') && !line.startsWith('+')) {
+          currentPkg = yarnPkgMatch[1];
+          oldVersion = null;
+          newVersion = null;
+        }
+
+        // Version changes
+        if (line.startsWith('-') && !line.startsWith('---')) {
+          const vMatch = line.match(/version["\s:]+([0-9a-zA-Z.-]+)/);
+          if (vMatch) oldVersion = vMatch[1];
+        } else if (line.startsWith('+') && !line.startsWith('+++')) {
+          const vMatch = line.match(/version["\s:]+([0-9a-zA-Z.-]+)/);
+          if (vMatch) newVersion = vMatch[1];
+        }
+
+        if (currentPkg && oldVersion && newVersion && oldVersion !== newVersion) {
+          if (!handledPackages.has(currentPkg)) {
+            handledPackages.add(currentPkg);
+            diffs.push({
+              name: currentPkg,
+              type: 'transitive',
+              oldVersion,
+              newVersion,
+              changeType: 'upgraded',
+              reason: 'Lockfile Drift'
+            });
+          }
+          oldVersion = null;
+          newVersion = null;
+        }
+      }
+    }
+  }
+
+  return diffs;
+}
+
+/**
+ * Runs a dry-run / frozen check to verify that the generated lockfile is structurally integral.
+ */
+export async function verifyLockfileIntegrity(
+  workspaceDir: string,
+  pm: PackageManager,
+  yarnVariant: YarnVariant = 'classic'
+): Promise<{ success: boolean; output: string }> {
+  let command = 'npm';
+  let args: string[] = [];
+
+  switch (pm) {
+    case 'pnpm':
+      command = 'pnpm';
+      args = ['install', '--frozen-lockfile', '--prefer-offline'];
+      break;
+
+    case 'yarn':
+      command = 'yarn';
+      if (yarnVariant === 'berry') {
+        args = ['install', '--immutable'];
+      } else {
+        args = ['install', '--frozen-lockfile', '--prefer-offline'];
+      }
+      break;
+
+    case 'bun':
+      command = 'bun';
+      args = ['install', '--frozen-lockfile'];
+      break;
+
+    case 'deno':
+      command = 'deno';
+      args = ['install', '--frozen'];
+      break;
+
+    case 'npm':
+    default:
+      command = 'npm';
+      args = ['ci', '--dry-run'];
+      break;
+  }
+
+  core.info(`[SyncMyDep] Verifying lockfile integrity using ${command} ${args.join(' ')}...`);
+
+  let output = '';
   const options = {
     cwd: workspaceDir,
     ignoreReturnCode: true,
     silent: true,
     listeners: {
       stdout: (data: Buffer) => {
-        diffText += data.toString();
+        output += data.toString();
+      },
+      stderr: (data: Buffer) => {
+        output += data.toString();
       }
     }
   };
 
-  await exec.exec('git', ['diff', '-U1', '--', ...pkgFiles], options);
-  if (!diffText) return [];
+  let exitCode = await exec.exec(command, args, options);
 
-  const diffs: DependencyDiff[] = [];
-  const lines = diffText.split('\n');
-  const removedMap = new Map<string, string>();
-  const addedMap = new Map<string, string>();
+  // Fallback for npm if `npm ci --dry-run` is not supported on older npm
+  if (exitCode !== 0 && pm === 'npm') {
+    core.info('[SyncMyDep] Falling back to npm ls for integrity check...');
+    exitCode = await exec.exec('npm', ['ls', '--depth=0'], options);
+  }
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith('-') && !trimmed.startsWith('---')) {
-      const match = trimmed.match(/^-\s*"([^"]+)":\s*"([^"]+)"/);
-      if (match) {
-        removedMap.set(match[1], match[2]);
-      }
-    } else if (trimmed.startsWith('+') && !trimmed.startsWith('+++')) {
-      const match = trimmed.match(/^\+\s*"([^"]+)":\s*"([^"]+)"/);
-      if (match) {
-        addedMap.set(match[1], match[2]);
+  return {
+    success: exitCode === 0,
+    output: output.trim()
+  };
+}
+
+/**
+ * Runs a custom build smoke test command if configured (e.g. `npm run build`).
+ */
+export async function runBuildSmokeTest(
+  workspaceDir: string,
+  buildCommand: string
+): Promise<BuildVerificationResult> {
+  if (!buildCommand || !buildCommand.trim()) {
+    return { command: '', success: true, output: '' };
+  }
+
+  const trimmed = buildCommand.trim();
+  core.info(`[SyncMyDep] Running build smoke test: ${trimmed}...`);
+
+  let output = '';
+  const options = {
+    cwd: workspaceDir,
+    ignoreReturnCode: true,
+    listeners: {
+      stdout: (data: Buffer) => {
+        output += data.toString();
+      },
+      stderr: (data: Buffer) => {
+        output += data.toString();
       }
     }
-  }
+  };
 
-  // Detect upgrades/downgrades & added
-  for (const [pkg, newVer] of addedMap.entries()) {
-    if (removedMap.has(pkg)) {
-      const oldVer = removedMap.get(pkg)!;
-      removedMap.delete(pkg);
-      diffs.push({
-        name: pkg,
-        type: 'prod',
-        oldVersion: oldVer,
-        newVersion: newVer,
-        changeType: 'upgraded'
-      });
-    } else {
-      diffs.push({
-        name: pkg,
-        type: 'prod',
-        newVersion: newVer,
-        changeType: 'added'
-      });
-    }
-  }
+  const exitCode = await exec.exec(trimmed, [], options);
 
-  // Remaining in removedMap are deletions
-  for (const [pkg, oldVer] of removedMap.entries()) {
-    diffs.push({
-      name: pkg,
-      type: 'prod',
-      oldVersion: oldVer,
-      changeType: 'removed'
-    });
-  }
-
-  return diffs;
+  return {
+    command: trimmed,
+    success: exitCode === 0,
+    output: output.trim()
+  };
 }

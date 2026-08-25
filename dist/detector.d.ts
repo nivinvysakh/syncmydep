@@ -1,4 +1,4 @@
-import { PackageManager, YarnVariant, AuditInspectionResult } from './types';
+import { PackageManager, YarnVariant, AuditInspectionResult, VulnerabilityAdvisory } from './types';
 /**
  * Detects the appropriate package manager for the workspace.
  */
@@ -15,6 +15,14 @@ export declare function checkPackageJsonExists(workspaceDir: string, pm?: Packag
  * Gets primary lockfile name associated with a package manager.
  */
 export declare function getLockfileName(pm: PackageManager): string;
+/**
+ * Extracts vulnerability advisories from npm audit JSON output.
+ */
+export declare function parseNpmAuditAdvisories(raw: Record<string, unknown>): VulnerabilityAdvisory[];
+/**
+ * Extracts vulnerability advisories from yarn audit JSON lines.
+ */
+export declare function parseYarnAuditAdvisories(stdout: string): VulnerabilityAdvisory[];
 /**
  * Runs a quick audit query to inspect vulnerabilities before/after fixing.
  */

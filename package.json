@@ -1,6 +1,6 @@
 {
   "name": "syncmydep",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "GitHub Action that detects package.json and lockfile mismatches, audits vulnerabilities, resolves them, and automatically opens a Pull Request.",
   "main": "dist/index.js",
   "scripts": {
@@ -20,9 +20,10 @@
     "pnpm",
     "pull-request"
   ],
-  "author": "",
+  "author": "Nivin Vysakh",
   "license": "MIT",
   "dependencies": {
+    "@actions/cache": "^6.2.0",
     "@actions/core": "^1.10.1",
     "@actions/exec": "^1.1.1",
     "@actions/github": "^6.0.1",

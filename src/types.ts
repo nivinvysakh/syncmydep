@@ -23,10 +23,26 @@ export interface WorkspaceInfo {
 
 export interface DependencyDiff {
   name: string;
-  type: 'prod' | 'dev' | 'peer' | 'optional';
+  type: 'prod' | 'dev' | 'peer' | 'optional' | 'transitive';
   oldVersion?: string;
   newVersion?: string;
   changeType: 'added' | 'upgraded' | 'downgraded' | 'removed';
+  reason?: 'Direct Update' | 'Audit Fix' | 'Lockfile Drift' | 'Transitive Upgrade';
+}
+
+export interface VulnerabilityAdvisory {
+  id: string; // e.g. GHSA-xxxx-xxxx-xxxx or CVE-xxxx-xxxxx
+  package: string;
+  severity: 'critical' | 'high' | 'moderate' | 'low' | 'info';
+  title: string;
+  patchedVersions?: string;
+  url?: string;
+}
+
+export interface BuildVerificationResult {
+  command: string;
+  success: boolean;
+  output: string;
 }
 
 export interface SyncMyDepConfig {
@@ -45,11 +61,18 @@ export interface SyncMyDepConfig {
   prReviewers?: string[];
   commentTrigger?: string;
   requireOwner?: boolean;
+  verifyLockfile?: boolean;
+  runBuild?: string;
+  failOnBuildError?: boolean;
+  autoMerge?: boolean;
+  autoMergeMethod?: 'squash' | 'merge' | 'rebase';
+  cache?: boolean;
 }
 
 export interface AuditInspectionResult {
   total: number;
   summary: Record<string, number>;
+  advisories?: VulnerabilityAdvisory[];
   raw: unknown;
 }
 
@@ -74,6 +97,8 @@ export interface SummaryOptions {
   fixedAudit: boolean;
   auditBefore: AuditInspectionResult | null;
   auditAfter: AuditInspectionResult | null;
+  lockfileVerified?: boolean;
+  buildResult?: BuildVerificationResult | null;
 }
 
 export interface CommentSummaryOptions extends SummaryOptions {
@@ -101,11 +126,14 @@ export interface CreateOrUpdatePullRequestParams {
   labels?: string[];
   assignees?: string[];
   reviewers?: string[];
+  autoMerge?: boolean;
+  autoMergeMethod?: 'squash' | 'merge' | 'rebase';
 }
 
 export interface PullRequestResult {
   number: number;
   url: string;
+  nodeId?: string;
   isNew: boolean;
 }
 

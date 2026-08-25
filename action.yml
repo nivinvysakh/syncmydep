@@ -74,6 +74,30 @@ inputs:
     description: 'Whether only repository owners/maintainers are allowed to trigger dependency fixes via comment ("true" or "false").'
     required: false
     default: 'true'
+  verify-lockfile:
+    description: 'Whether to run a dry-run frozen installation check on the generated lockfile before committing.'
+    required: false
+    default: 'true'
+  run-build:
+    description: 'Optional build smoke test command (e.g. "npm run build") to verify before opening PR.'
+    required: false
+    default: ''
+  fail-on-build-error:
+    description: 'Whether to fail and abort if the build smoke test encounters an error ("true" or "false").'
+    required: false
+    default: 'false'
+  auto-merge:
+    description: 'Whether to enable GitHub native auto-merge once CI status checks pass ("true" or "false").'
+    required: false
+    default: 'false'
+  auto-merge-method:
+    description: 'Merge method for auto-merge: "squash", "merge", or "rebase".'
+    required: false
+    default: 'squash'
+  cache:
+    description: 'Whether to automatically restore and save package manager caches to accelerate runs ("true" or "false").'
+    required: false
+    default: 'true'
 
 outputs:
   changes-detected:

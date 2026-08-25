@@ -69,4 +69,53 @@ describe('summary builder', () => {
     expect(summary).toContain('⏭️ Skipped');
     expect(summary).toContain('`bun.lock`');
   });
+
+  test('renders CVE vulnerability advisory disclosure table and verification badges', () => {
+    const summary = buildMarkdownSummary({
+      pm: 'npm',
+      changedFiles: ['package-lock.json'],
+      diffStat: 'package-lock.json | 50 +++',
+      dependencyDiffs: [
+        {
+          name: 'axios',
+          type: 'prod',
+          oldVersion: '0.21.1',
+          newVersion: '1.7.4',
+          changeType: 'upgraded',
+          reason: 'Audit Fix'
+        }
+      ],
+      syncedLockfile: true,
+      fixedAudit: true,
+      lockfileVerified: true,
+      buildResult: {
+        command: 'npm run build',
+        success: true,
+        output: 'Build successful'
+      },
+      auditBefore: {
+        total: 1,
+        summary: { high: 1 },
+        advisories: [
+          {
+            id: 'GHSA-cph5-m8f7-6c5x',
+            package: 'axios',
+            severity: 'high',
+            title: 'Server-Side Request Forgery in axios',
+            patchedVersions: '>=1.7.4',
+            url: 'https://github.com/advisories/GHSA-cph5-m8f7-6c5x'
+          }
+        ],
+        raw: null
+      },
+      auditAfter: { total: 0, summary: {}, advisories: [], raw: null }
+    });
+
+    expect(summary).toContain('Vulnerability & Security Advisory Disclosure');
+    expect(summary).toContain('GHSA-cph5-m8f7-6c5x');
+    expect(summary).toContain('`axios`');
+    expect(summary).toContain('🟠 **High**');
+    expect(summary).toContain('Lockfile Integrity Verification**: ✅ Passed');
+    expect(summary).toContain('Build Smoke Test**: ✅ Passed (`npm run build`)');
+  });
 });

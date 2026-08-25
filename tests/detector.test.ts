@@ -4,7 +4,9 @@ import {
   detectPackageManager,
   detectYarnVariant,
   checkPackageJsonExists,
-  getLockfileName
+  getLockfileName,
+  parseNpmAuditAdvisories,
+  parseYarnAuditAdvisories
 } from '../src/detector';
 
 describe('detector', () => {
@@ -93,5 +95,60 @@ describe('detector', () => {
 
   test('detectPackageManager defaults to npm if package-lock.json exists or no lockfile', () => {
     expect(detectPackageManager(tempDir, 'auto')).toBe('npm');
+  });
+
+  test('parseNpmAuditAdvisories extracts GHSA / CVE from npm v7+ report', () => {
+    const mockReport = {
+      vulnerabilities: {
+        lodash: {
+          name: 'lodash',
+          severity: 'high',
+          via: [
+            {
+              source: 1084,
+              name: 'lodash',
+              title: 'Prototype Pollution in lodash',
+              url: 'https://github.com/advisories/GHSA-p6mc-m468-83gw',
+              severity: 'high'
+            }
+          ],
+          fixAvailable: {
+            name: 'lodash',
+            version: '4.17.21'
+          }
+        }
+      }
+    };
+
+    const advisories = parseNpmAuditAdvisories(mockReport);
+    expect(advisories).toHaveLength(1);
+    expect(advisories[0].package).toBe('lodash');
+    expect(advisories[0].id).toBe('GHSA-p6mc-m468-83gw');
+    expect(advisories[0].severity).toBe('high');
+    expect(advisories[0].patchedVersions).toBe('4.17.21');
+  });
+
+  test('parseYarnAuditAdvisories extracts advisories from yarn audit JSON stream', () => {
+    const yarnJsonLine = JSON.stringify({
+      type: 'auditAdvisory',
+      data: {
+        advisory: {
+          id: 1084,
+          title: 'Prototype Pollution in lodash',
+          module_name: 'lodash',
+          severity: 'high',
+          cves: ['CVE-2020-8203'],
+          github_advisory_id: 'GHSA-p6mc-m468-83gw',
+          patched_versions: '>=4.17.21',
+          url: 'https://npmjs.com/advisories/1084'
+        }
+      }
+    });
+
+    const advisories = parseYarnAuditAdvisories(yarnJsonLine);
+    expect(advisories).toHaveLength(1);
+    expect(advisories[0].package).toBe('lodash');
+    expect(advisories[0].id).toBe('GHSA-p6mc-m468-83gw');
+    expect(advisories[0].patchedVersions).toBe('>=4.17.21');
   });
 });
