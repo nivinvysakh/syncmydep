@@ -177,7 +177,7 @@ require-owner: true
 
 | Input                 | Description                                                                          | Required | Default                                                     |
 | :-------------------- | :----------------------------------------------------------------------------------- | :------: | :---------------------------------------------------------- |
-| `github-token`        | GitHub token for git push and opening PRs (`${{ secrets.GH_PAT \|\| secrets.GITHUB_TOKEN }}`) |    No    | `${{ github.token }}`                                       |
+| `github-token`        | GitHub token for git push and opening PRs (`${{ secrets.GH_PAT \|\| secrets.GITHUB_TOKEN }}`) |   Yes    | `${{ github.token }}`                                       |
 | `package-manager`     | Package manager: `auto`, `npm`, `yarn`, `pnpm`, `bun`, `deno`                        |    No    | `auto`                                                      |
 | `working-directory`   | Path to directory containing package manifest and lockfile                           |    No    | `.`                                                         |
 | `config-file`         | Optional path to custom `.syncmydep.yml` config file                                 |    No    | `""`                                                        |
