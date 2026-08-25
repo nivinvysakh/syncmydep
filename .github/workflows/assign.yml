@@ -26,30 +26,36 @@ jobs:
               ? context.payload.pull_request.number
               : parseInt(context.payload.inputs?.pull_number || '19', 10);
 
-            core.info(`Assigning and requesting review for PR #${prNumber}...`);
+            const team = ['nivinvysakh', 'maneeeeth'];
+            const prAuthor = context.payload.pull_request?.user?.login;
+            
+            // Assign team members (excluding author if PR was created by a team member)
+            const candidates = team.filter(user => user.toLowerCase() !== prAuthor?.toLowerCase());
 
-            // 1. Request review from owner
+            core.info(`Assigning and requesting review for PR #${prNumber} to: ${candidates.join(', ')}...`);
+
+            // 1. Request review from team members
             try {
               await github.rest.pulls.requestReviewers({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: prNumber,
-                reviewers: ['nivinvysakh']
+                reviewers: candidates
               });
-              core.info('✅ Successfully requested review from @nivinvysakh');
+              core.info(`✅ Successfully requested review from: ${candidates.join(', ')}`);
             } catch (err) {
               core.warning(`Review request error: ${err.message}`);
             }
 
-            // 2. Add as Assignee
+            // 2. Add as Assignees
             try {
               await github.rest.issues.addAssignees({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: prNumber,
-                assignees: ['nivinvysakh']
+                assignees: candidates
               });
-              core.info('✅ Successfully assigned @nivinvysakh');
+              core.info(`✅ Successfully assigned: ${candidates.join(', ')}`);
             } catch (err) {
               core.warning(`Assignee error: ${err.message}`);
             }
