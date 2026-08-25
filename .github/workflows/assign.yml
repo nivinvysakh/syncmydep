@@ -1,0 +1,55 @@
+name: Auto Assign Reviewer
+
+on:
+  pull_request_target:
+    types: [opened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pull_number:
+        description: 'PR number to test assignment on'
+        required: false
+        default: '19'
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  assign-reviewer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request Review & Assign
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.pull_request
+              ? context.payload.pull_request.number
+              : parseInt(context.payload.inputs?.pull_number || '19', 10);
+
+            core.info(`Assigning and requesting review for PR #${prNumber}...`);
+
+            // 1. Request review from owner
+            try {
+              await github.rest.pulls.requestReviewers({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+                reviewers: ['nivinvysakh']
+              });
+              core.info('✅ Successfully requested review from @nivinvysakh');
+            } catch (err) {
+              core.warning(`Review request error: ${err.message}`);
+            }
+
+            // 2. Add as Assignee
+            try {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                assignees: ['nivinvysakh']
+              });
+              core.info('✅ Successfully assigned @nivinvysakh');
+            } catch (err) {
+              core.warning(`Assignee error: ${err.message}`);
+            }
