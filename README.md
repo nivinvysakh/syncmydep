@@ -1,6 +1,6 @@
 # 🔄 SyncMyDep
 
-<img align="right" src="/images/drawing.png" width="280" alt="Wonderful drawing"/>
+<img align="right" src="/images/drawing.svg" width="280" alt="Wonderful drawing"/>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/nivinvysakh/syncmydep/blob/main/LICENSE)
 [![GitHub Release](https://img.shields.io/github/v/release/nivinvysakh/syncmydep?color=purple&label=latest%20release)](https://github.com/nivinvysakh/syncmydep/releases/latest)
