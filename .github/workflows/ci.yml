@@ -21,10 +21,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
@@ -45,5 +45,6 @@ jobs:
         run: npm run build
 
       - name: Check for uncommitted dist changes
+        if: matrix.os == 'ubuntu-latest'
         run: |
           git diff --ignore-space-at-eol --exit-code dist/ || (echo "Error: dist/ is out of date. Please run 'npm run build' and commit changes." && git diff dist/ && exit 1)
