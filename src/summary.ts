@@ -2,7 +2,8 @@ import {
   SummaryOptions,
   CommentSummaryOptions,
   DependencyDiff,
-  VulnerabilityAdvisory
+  VulnerabilityAdvisory,
+  AuditInspectionResult
 } from './types';
 
 /**
@@ -51,7 +52,7 @@ export function buildMarkdownSummary({
     md += `- **Monorepo / Workspace**: \`${workspaceInfo.type}\` (${workspaceInfo.packages.length} workspace packages)\n`;
   }
   md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
-  md += `- **Security Audit Fix**: ${fixedAudit ? '✅ Applied' : '⏭️ Skipped'}\n`;
+  md += `- **Security Audit Fix**: ${formatAuditStatus(fixedAudit, auditBefore, auditAfter)}\n`;
   if (lockfileVerified !== undefined) {
     md += `- **Lockfile Integrity Verification**: ${lockfileVerified ? '✅ Passed (dry-run installation verified)' : '⚠️ Warning (dry-run inspection failed)'}\n`;
   }
@@ -140,7 +141,7 @@ export function buildCommentSummary({
     md += `- **Monorepo / Workspace**: \`${workspaceInfo.type}\` (${workspaceInfo.packages.length} packages)\n`;
   }
   md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
-  md += `- **Security Audit Fix**: ${fixedAudit ? '✅ Applied' : '⏭️ Skipped'}\n`;
+  md += `- **Security Audit Fix**: ${formatAuditStatus(fixedAudit, auditBefore, auditAfter)}\n`;
   if (lockfileVerified !== undefined) {
     md += `- **Lockfile Integrity**: ${lockfileVerified ? '✅ Passed' : '⚠️ Warning'}\n`;
   }
@@ -179,6 +180,38 @@ export function buildCommentSummary({
   md += `---\n*Pushed directly to \`${branch}\` by [SyncMyDep](https://github.com/nivinvysakh/syncmydep).*`;
 
   return md;
+}
+
+/**
+ * Formats a descriptive and informative security audit status string.
+ */
+function formatAuditStatus(
+  fixedAudit: boolean,
+  auditBefore: AuditInspectionResult | null,
+  auditAfter: AuditInspectionResult | null
+): string {
+  if (auditBefore === null) {
+    return fixedAudit ? '✅ Applied' : '⏭️ Skipped';
+  }
+
+  if (auditBefore.total === 0) {
+    return '✅ Clean (0 vulnerabilities detected)';
+  }
+
+  if (auditAfter) {
+    if (auditAfter.total === 0) {
+      return `✅ Applied (All ${auditBefore.total} vulnerabilities patched)`;
+    }
+    if (auditAfter.total < auditBefore.total) {
+      const fixedCount = auditBefore.total - auditAfter.total;
+      return `🔄 Partially Applied (${fixedCount} patched, ${auditAfter.total} require breaking changes)`;
+    }
+    if (auditAfter.total >= auditBefore.total) {
+      return `⚠️ Attempted (${auditBefore.total} require breaking major version upgrade / manual review)`;
+    }
+  }
+
+  return fixedAudit ? '✅ Applied' : '⏭️ Skipped';
 }
 
 /**
