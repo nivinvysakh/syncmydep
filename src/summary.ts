@@ -196,6 +196,8 @@ function buildDependencyDiffTable(diffs: DependencyDiff[]): string {
     let statusText: string = diff.reason || 'Direct Update';
     if (diff.changeType === 'added') statusText = '✨ Added';
     if (diff.changeType === 'removed') statusText = '🗑️ Removed';
+    if (diff.reason === 'Lockfile Drift') statusText = '🔒 Lockfile Drift';
+    if (diff.reason === 'Direct Update' && diff.changeType === 'upgraded') statusText = '🔄 Direct Update';
     return `| \`${diff.name}\` | ${oldV} | ${newV} | ${statusText} |\n`;
   };
 
@@ -217,7 +219,7 @@ function buildDependencyDiffTable(diffs: DependencyDiff[]): string {
       }
       md += `\n`;
     } else {
-      md += `<details>\n<summary>📦 <b>${transitiveDiffs.length} Sub-dependency Updates (Lockfile Drift)</b> (Click to expand)</summary>\n\n`;
+      md += `<details>\n<summary>🔒 <b>${transitiveDiffs.length} Sub-dependency Updates (Lockfile Drift)</b> (Click to expand)</summary>\n\n`;
       md += `| Package | Old Version | New Version | Reason / Type |\n`;
       md += `| :--- | :--- | :--- | :--- |\n`;
       for (const diff of transitiveDiffs) {
