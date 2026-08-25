@@ -94931,23 +94931,28 @@ async function configureGitUser(workspaceDir, octokit, customName, customEmail) 
  */
 async function checkoutBranch(workspaceDir, branch, prNumber) {
     const options = { cwd: workspaceDir, ignoreReturnCode: true };
-    lib_core.info(`[SyncMyDep] Fetching and checking out branch ${branch}...`);
+    lib_core.info(`[SyncMyDep] Fetching and checking out branch '${branch}'${prNumber ? ` (PR #${prNumber})` : ''}...`);
     if (prNumber) {
-        await lib_exec.exec("git", ["fetch", "origin", `pull/${prNumber}/head:${branch}`], options);
+        const prWorkBranch = `syncmydep-pr-${prNumber}`;
+        const fetchPrCode = await lib_exec.exec("git", ["fetch", "origin", `pull/${prNumber}/head:${prWorkBranch}`, "--force"], options);
+        if (fetchPrCode === 0) {
+            const checkoutCode = await lib_exec.exec("git", ["checkout", "-B", prWorkBranch, `refs/heads/${prWorkBranch}`], options);
+            if (checkoutCode === 0) {
+                return;
+            }
+        }
     }
-    await lib_exec.exec("git", ["fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`], options);
+    await lib_exec.exec("git", ["fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`, "--force"], options);
     const checkoutCode = await lib_exec.exec("git", ["checkout", branch], options);
     if (checkoutCode !== 0) {
         await lib_exec.exec("git", ["checkout", "-B", branch, `origin/${branch}`], options);
     }
 }
 /**
- * Creates/checks out a branch, commits modified files, and pushes to origin.
+ * Creates/checks out a branch, commits modified files, and pushes to origin or fork remote.
  */
-async function commitAndPushChanges({ workspaceDir, branch, commitMessage, files, }) {
+async function commitAndPushChanges({ workspaceDir, branch, commitMessage, files, isFork, headRepo, token, }) {
     const options = { cwd: workspaceDir, ignoreReturnCode: true };
-    lib_core.info(`[SyncMyDep] Checking out branch: ${branch}...`);
-    await lib_exec.exec("git", ["checkout", "-B", branch], options);
     lib_core.info(`[SyncMyDep] Staging changed files: ${files.join(", ")}...`);
     await lib_exec.exec("git", ["add", ...files], options);
     lib_core.info(`[SyncMyDep] Committing changes...`);
@@ -94956,11 +94961,28 @@ async function commitAndPushChanges({ workspaceDir, branch, commitMessage, files
         lib_core.info("[SyncMyDep] No staged changes to commit or commit failed.");
         return false;
     }
-    lib_core.info(`[SyncMyDep] Pushing branch ${branch} to remote...`);
-    const pushCode = await lib_exec.exec("git", ["push", "origin", branch], options);
+    // If this is a fork PR, configure the authenticated fork remote
+    if (isFork && headRepo && token) {
+        lib_core.info(`[SyncMyDep] Fork PR detected from ${headRepo}. Configuring fork remote...`);
+        const remoteUrl = `https://x-access-token:${token}@github.com/${headRepo}.git`;
+        await lib_exec.exec("git", ["remote", "remove", "pr-fork"], { cwd: workspaceDir, silent: true, ignoreReturnCode: true });
+        await lib_exec.exec("git", ["remote", "add", "pr-fork", remoteUrl], { cwd: workspaceDir, silent: true, ignoreReturnCode: true });
+        lib_core.info(`[SyncMyDep] Pushing fixes to fork branch: ${headRepo}:${branch}...`);
+        const pushCode = await lib_exec.exec("git", ["push", "pr-fork", `HEAD:${branch}`], options);
+        if (pushCode !== 0) {
+            lib_core.info(`[SyncMyDep] Standard push to fork failed, retrying with force...`);
+            const forcePushCode = await lib_exec.exec("git", ["push", "pr-fork", `HEAD:${branch}`, "--force"], options);
+            if (forcePushCode !== 0) {
+                throw new Error(`Failed to push dependency fixes to fork ${headRepo}:${branch}. Please verify that the PR author has "Maintainers are allowed to edit this pull request" enabled or check token permissions.`);
+            }
+        }
+        return true;
+    }
+    lib_core.info(`[SyncMyDep] Pushing branch ${branch} to origin...`);
+    const pushCode = await lib_exec.exec("git", ["push", "origin", `HEAD:${branch}`], options);
     if (pushCode !== 0) {
         lib_core.info(`[SyncMyDep] Standard push failed, retrying with force...`);
-        const forcePushCode = await lib_exec.exec("git", ["push", "origin", branch, "--force"], options);
+        const forcePushCode = await lib_exec.exec("git", ["push", "origin", `HEAD:${branch}`, "--force"], options);
         if (forcePushCode !== 0) {
             throw new Error(`Failed to push branch ${branch} to origin.`);
         }
@@ -94976,12 +94998,15 @@ async function getPullRequestDetails(octokit, owner, repo, pullNumber) {
         repo,
         pull_number: pullNumber,
     });
+    const headRepo = pr.head.repo ? pr.head.repo.full_name : `${owner}/${repo}`;
+    const isFork = Boolean(pr.head.repo && pr.head.repo.full_name.toLowerCase() !== `${owner}/${repo}`.toLowerCase());
     return {
         number: pr.number,
         title: pr.title,
         headBranch: pr.head.ref,
         baseBranch: pr.base.ref,
-        headRepo: pr.head.repo ? pr.head.repo.full_name : `${owner}/${repo}`,
+        headRepo,
+        isFork,
         htmlUrl: pr.html_url,
     };
 }
@@ -99028,7 +99053,7 @@ async function recreateFreshBranch(workspaceDir, baseBranch, targetBranch) {
  * and updates or notifies the PR.
  */
 async function rebaseAndRedoProcess(options) {
-    const { workspaceDir, octokit, owner, repo, baseBranch, targetBranch, prNumber, triggerCommentId, commentId, commenter, pm, yarnVariant, workspaceInfo, syncLockfileOption, fixAuditOption, auditLevel, commitMessage, prTitle, labels = [], assignees = [], reviewers = [], verifyLockfile = true, runBuild, failOnBuildError = false, autoMerge = false, autoMergeMethod = 'squash', } = options;
+    const { workspaceDir, octokit, owner, repo, baseBranch, targetBranch, headRepo, isFork, token, prNumber, triggerCommentId, commentId, commenter, pm, yarnVariant, workspaceInfo, syncLockfileOption, fixAuditOption, auditLevel, commitMessage, prTitle, labels = [], assignees = [], reviewers = [], verifyLockfile = true, runBuild, failOnBuildError = false, autoMerge = false, autoMergeMethod = 'squash', } = options;
     const userTriggerCommentId = triggerCommentId || commentId;
     let botCommentId;
     if (prNumber) {
@@ -99110,6 +99135,9 @@ async function rebaseAndRedoProcess(options) {
         commitMessage: commitMessage ||
             `chore(deps): synchronize package.json and lockfile (rebased)`,
         files: changedFiles,
+        headRepo,
+        isFork,
+        token,
     });
     if (!committedAndPushed) {
         lib_core.warning(`[SyncMyDep] Failed to commit or push rebased branch ${targetBranch}.`);
@@ -99306,6 +99334,9 @@ async function run() {
                     repo,
                     baseBranch: prDetails.baseBranch,
                     targetBranch: prDetails.headBranch,
+                    headRepo: prDetails.headRepo,
+                    isFork: prDetails.isFork,
+                    token,
                     prNumber,
                     triggerCommentId: comment?.id,
                     commenter,
@@ -99393,7 +99424,10 @@ async function run() {
                 workspaceDir,
                 branch: prDetails.headBranch,
                 commitMessage: commitMessage || `chore(deps): synchronize package.json and lockfile`,
-                files: changedFiles
+                files: changedFiles,
+                headRepo: prDetails.headRepo,
+                token,
+                isFork: prDetails.isFork
             });
             if (committed) {
                 if (comment?.id) {

@@ -34,6 +34,9 @@ export interface RebaseAndRedoOptions {
   repo: string;
   baseBranch: string;
   targetBranch: string;
+  headRepo?: string;
+  isFork?: boolean;
+  token?: string;
   prNumber?: number;
   triggerCommentId?: number;
   commentId?: number;
@@ -176,6 +179,9 @@ export async function rebaseAndRedoProcess(
     repo,
     baseBranch,
     targetBranch,
+    headRepo,
+    isFork,
+    token,
     prNumber,
     triggerCommentId,
     commentId,
@@ -315,6 +321,9 @@ export async function rebaseAndRedoProcess(
       commitMessage ||
       `chore(deps): synchronize package.json and lockfile (rebased)`,
     files: changedFiles,
+    headRepo,
+    isFork,
+    token,
   });
 
   if (!committedAndPushed) {

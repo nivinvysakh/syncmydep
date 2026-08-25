@@ -6,6 +6,9 @@ export interface RebaseAndRedoOptions {
     repo: string;
     baseBranch: string;
     targetBranch: string;
+    headRepo?: string;
+    isFork?: boolean;
+    token?: string;
     prNumber?: number;
     triggerCommentId?: number;
     commentId?: number;

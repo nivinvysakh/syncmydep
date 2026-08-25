@@ -184,6 +184,9 @@ async function run(): Promise<void> {
           repo,
           baseBranch: prDetails.baseBranch,
           targetBranch: prDetails.headBranch,
+          headRepo: prDetails.headRepo,
+          isFork: prDetails.isFork,
+          token,
           prNumber,
           triggerCommentId: comment?.id,
           commenter,
@@ -301,7 +304,10 @@ async function run(): Promise<void> {
         workspaceDir,
         branch: prDetails.headBranch,
         commitMessage: commitMessage || `chore(deps): synchronize package.json and lockfile`,
-        files: changedFiles
+        files: changedFiles,
+        headRepo: prDetails.headRepo,
+        token,
+        isFork: prDetails.isFork
       });
 
       if (committed) {

@@ -89,6 +89,9 @@ export interface CommitAndPushParams {
     branch: string;
     commitMessage: string;
     files: string[];
+    headRepo?: string;
+    token?: string;
+    isFork?: boolean;
 }
 export type OctokitClient = ReturnType<typeof getOctokit>;
 export interface CreateOrUpdatePullRequestParams {
@@ -117,6 +120,7 @@ export interface PullRequestDetails {
     headBranch: string;
     baseBranch: string;
     headRepo: string;
+    isFork?: boolean;
     htmlUrl: string;
 }
 export type CommentReaction = '+1' | '-1' | 'laugh' | 'confused' | 'heart' | 'hooray' | 'rocket' | 'eyes';

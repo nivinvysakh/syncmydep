@@ -48,17 +48,30 @@ export async function checkoutBranch(
   prNumber?: number,
 ): Promise<void> {
   const options = { cwd: workspaceDir, ignoreReturnCode: true };
-  core.info(`[SyncMyDep] Fetching and checking out branch ${branch}...`);
+  core.info(`[SyncMyDep] Fetching and checking out branch '${branch}'${prNumber ? ` (PR #${prNumber})` : ''}...`);
+
   if (prNumber) {
-    await exec.exec(
+    const prWorkBranch = `syncmydep-pr-${prNumber}`;
+    const fetchPrCode = await exec.exec(
       "git",
-      ["fetch", "origin", `pull/${prNumber}/head:${branch}`],
+      ["fetch", "origin", `pull/${prNumber}/head:${prWorkBranch}`, "--force"],
       options,
     );
+    if (fetchPrCode === 0) {
+      const checkoutCode = await exec.exec(
+        "git",
+        ["checkout", "-B", prWorkBranch, `refs/heads/${prWorkBranch}`],
+        options,
+      );
+      if (checkoutCode === 0) {
+        return;
+      }
+    }
   }
+
   await exec.exec(
     "git",
-    ["fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`],
+    ["fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`, "--force"],
     options,
   );
   const checkoutCode = await exec.exec("git", ["checkout", branch], options);
@@ -72,18 +85,18 @@ export async function checkoutBranch(
 }
 
 /**
- * Creates/checks out a branch, commits modified files, and pushes to origin.
+ * Creates/checks out a branch, commits modified files, and pushes to origin or fork remote.
  */
 export async function commitAndPushChanges({
   workspaceDir,
   branch,
   commitMessage,
   files,
+  isFork,
+  headRepo,
+  token,
 }: CommitAndPushParams): Promise<boolean> {
   const options = { cwd: workspaceDir, ignoreReturnCode: true };
-
-  core.info(`[SyncMyDep] Checking out branch: ${branch}...`);
-  await exec.exec("git", ["checkout", "-B", branch], options);
 
   core.info(`[SyncMyDep] Staging changed files: ${files.join(", ")}...`);
   await exec.exec("git", ["add", ...files], options);
@@ -99,13 +112,38 @@ export async function commitAndPushChanges({
     return false;
   }
 
-  core.info(`[SyncMyDep] Pushing branch ${branch} to remote...`);
-  const pushCode = await exec.exec("git", ["push", "origin", branch], options);
+  // If this is a fork PR, configure the authenticated fork remote
+  if (isFork && headRepo && token) {
+    core.info(`[SyncMyDep] Fork PR detected from ${headRepo}. Configuring fork remote...`);
+    const remoteUrl = `https://x-access-token:${token}@github.com/${headRepo}.git`;
+    await exec.exec("git", ["remote", "remove", "pr-fork"], { cwd: workspaceDir, silent: true, ignoreReturnCode: true });
+    await exec.exec("git", ["remote", "add", "pr-fork", remoteUrl], { cwd: workspaceDir, silent: true, ignoreReturnCode: true });
+
+    core.info(`[SyncMyDep] Pushing fixes to fork branch: ${headRepo}:${branch}...`);
+    const pushCode = await exec.exec("git", ["push", "pr-fork", `HEAD:${branch}`], options);
+    if (pushCode !== 0) {
+      core.info(`[SyncMyDep] Standard push to fork failed, retrying with force...`);
+      const forcePushCode = await exec.exec(
+        "git",
+        ["push", "pr-fork", `HEAD:${branch}`, "--force"],
+        options,
+      );
+      if (forcePushCode !== 0) {
+        throw new Error(
+          `Failed to push dependency fixes to fork ${headRepo}:${branch}. Please verify that the PR author has "Maintainers are allowed to edit this pull request" enabled or check token permissions.`
+        );
+      }
+    }
+    return true;
+  }
+
+  core.info(`[SyncMyDep] Pushing branch ${branch} to origin...`);
+  const pushCode = await exec.exec("git", ["push", "origin", `HEAD:${branch}`], options);
   if (pushCode !== 0) {
     core.info(`[SyncMyDep] Standard push failed, retrying with force...`);
     const forcePushCode = await exec.exec(
       "git",
-      ["push", "origin", branch, "--force"],
+      ["push", "origin", `HEAD:${branch}`, "--force"],
       options,
     );
     if (forcePushCode !== 0) {
@@ -131,12 +169,16 @@ export async function getPullRequestDetails(
     pull_number: pullNumber,
   });
 
+  const headRepo = pr.head.repo ? pr.head.repo.full_name : `${owner}/${repo}`;
+  const isFork = Boolean(pr.head.repo && pr.head.repo.full_name.toLowerCase() !== `${owner}/${repo}`.toLowerCase());
+
   return {
     number: pr.number,
     title: pr.title,
     headBranch: pr.head.ref,
     baseBranch: pr.base.ref,
-    headRepo: pr.head.repo ? pr.head.repo.full_name : `${owner}/${repo}`,
+    headRepo,
+    isFork,
     htmlUrl: pr.html_url,
   };
 }

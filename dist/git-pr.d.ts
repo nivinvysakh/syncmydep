@@ -8,9 +8,9 @@ export declare function configureGitUser(workspaceDir: string, octokit?: Octokit
  */
 export declare function checkoutBranch(workspaceDir: string, branch: string, prNumber?: number): Promise<void>;
 /**
- * Creates/checks out a branch, commits modified files, and pushes to origin.
+ * Creates/checks out a branch, commits modified files, and pushes to origin or fork remote.
  */
-export declare function commitAndPushChanges({ workspaceDir, branch, commitMessage, files, }: CommitAndPushParams): Promise<boolean>;
+export declare function commitAndPushChanges({ workspaceDir, branch, commitMessage, files, isFork, headRepo, token, }: CommitAndPushParams): Promise<boolean>;
 /**
  * Fetches pull request details from GitHub API.
  */
