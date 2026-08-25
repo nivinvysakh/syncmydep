@@ -1,0 +1,25 @@
+# Default codeowner for all files across the repository
+
+- @nivinvysakh
+
+# Core Action Logic & Packaging
+
+/src/ @nivinvysakh
+/action.yml @nivinvysakh
+/package.json @nivinvysakh
+/package-lock.json @nivinvysakh
+/tsconfig.json @nivinvysakh
+
+# CI/CD Workflows & GitHub Configurations
+
+/.github/ @nivinvysakh
+
+# Automated Test Suites
+
+/tests/ @nivinvysakh
+
+# Documentation & Assets (Can allow open community reviews if desired)
+
+/README.md @nivinvysakh
+/images/ @nivinvysakh
+/LICENSE @nivinvysakh
