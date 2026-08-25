@@ -60,6 +60,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  workflows: write
 
 jobs:
   sync:
@@ -101,6 +102,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  workflows: write
 
 jobs:
   sync-pr-comment:
