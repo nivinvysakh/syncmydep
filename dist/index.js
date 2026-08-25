@@ -163043,15 +163043,22 @@ function buildDependencyDiffTable(diffs) {
  */
 function buildAdvisoryTable(advisories, fixed) {
     let md = `### 🛡️ Vulnerability & Security Advisory Disclosure\n\n`;
-    md += `The following security advisories were identified${fixed ? ' and patched' : ''}:\n\n`;
-    md += `| Severity | Advisory / CVE | Package | Patched In | Title |\n`;
-    md += `| :--- | :--- | :--- | :--- | :--- |\n`;
+    md += `The following security advisories were identified${fixed ? ' and patched' : ''} (Total: **${advisories.length}**):\n\n`;
+    let table = `| Severity | Advisory / CVE | Package | Patched In | Title |\n`;
+    table += `| :--- | :--- | :--- | :--- | :--- |\n`;
     for (const adv of advisories) {
         const idLink = adv.url ? `[${adv.id}](${adv.url})` : adv.id;
         const patched = adv.patchedVersions ? `\`${adv.patchedVersions}\`` : '—';
-        md += `| ${formatSeverity(adv.severity)} | ${idLink} | \`${adv.package}\` | ${patched} | ${adv.title} |\n`;
+        table += `| ${formatSeverity(adv.severity)} | ${idLink} | \`${adv.package}\` | ${patched} | ${adv.title} |\n`;
     }
-    md += `\n`;
+    if (advisories.length <= 5) {
+        md += `${table}\n`;
+    }
+    else {
+        md += `<details>\n<summary>🛡️ <b>View all ${advisories.length} Security Advisories</b> (Click to expand)</summary>\n\n`;
+        md += `${table}\n`;
+        md += `</details>\n\n`;
+    }
     return md;
 }
 
