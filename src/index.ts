@@ -104,6 +104,13 @@ async function run(): Promise<void> {
     const isIssueComment = eventName === 'issue_comment';
     const isPullRequest = eventName === 'pull_request';
 
+    // Prevent recursive runs when commits are pushed to the sync branch itself
+    const currentRef = github.context.ref || '';
+    if (!isIssueComment && !isPullRequest && (currentRef === `refs/heads/${branchName}` || currentRef.endsWith(`/${branchName}`))) {
+      core.info(`[SyncMyDep] Triggered on PR branch '${branchName}' itself. Skipping to prevent recursion.`);
+      return;
+    }
+
     // 4. Handle PR Comment Trigger
     if (isIssueComment) {
       const issue = github.context.payload.issue;

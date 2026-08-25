@@ -100001,7 +100001,6 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
             title,
             body,
         });
-        await postIssueComment(octokit, owner, repo, prNumber, `🔄 **SyncMyDep Update**: Refreshed dependency synchronization and pushed latest fixes.`);
     }
     else {
         lib_core.info(`[SyncMyDep] Creating new Pull Request...`);
@@ -162997,10 +162996,10 @@ function buildCommentSummary({ pm, yarnVariant, workspaceInfo, changedFiles, dif
  * Generates a markdown diff table for changed package versions.
  */
 function buildDependencyDiffTable(diffs) {
+    const directDiffs = diffs.filter((d) => d.type === 'prod' || d.type === 'dev');
+    const transitiveDiffs = diffs.filter((d) => d.type === 'transitive');
     let md = `### 🔄 Package Version Changes\n\n`;
-    md += `| Package | Old Version | New Version | Reason / Type |\n`;
-    md += `| :--- | :--- | :--- | :--- |\n`;
-    for (const diff of diffs) {
+    const renderRow = (diff) => {
         const oldV = diff.oldVersion ? `\`${diff.oldVersion}\`` : '—';
         const newV = diff.newVersion ? `\`${diff.newVersion}\`` : '—';
         let statusText = diff.reason || 'Direct Update';
@@ -163008,9 +163007,35 @@ function buildDependencyDiffTable(diffs) {
             statusText = '✨ Added';
         if (diff.changeType === 'removed')
             statusText = '🗑️ Removed';
-        md += `| \`${diff.name}\` | ${oldV} | ${newV} | ${statusText} |\n`;
+        return `| \`${diff.name}\` | ${oldV} | ${newV} | ${statusText} |\n`;
+    };
+    if (directDiffs.length > 0) {
+        md += `| Package | Old Version | New Version | Reason / Type |\n`;
+        md += `| :--- | :--- | :--- | :--- |\n`;
+        for (const diff of directDiffs) {
+            md += renderRow(diff);
+        }
+        md += `\n`;
     }
-    md += `\n`;
+    if (transitiveDiffs.length > 0) {
+        if (directDiffs.length === 0 && transitiveDiffs.length <= 5) {
+            md += `| Package | Old Version | New Version | Reason / Type |\n`;
+            md += `| :--- | :--- | :--- | :--- |\n`;
+            for (const diff of transitiveDiffs) {
+                md += renderRow(diff);
+            }
+            md += `\n`;
+        }
+        else {
+            md += `<details>\n<summary>📦 <b>${transitiveDiffs.length} Sub-dependency Updates (Lockfile Drift)</b> (Click to expand)</summary>\n\n`;
+            md += `| Package | Old Version | New Version | Reason / Type |\n`;
+            md += `| :--- | :--- | :--- | :--- |\n`;
+            for (const diff of transitiveDiffs) {
+                md += renderRow(diff);
+            }
+            md += `\n</details>\n\n`;
+        }
+    }
     return md;
 }
 /**
@@ -163320,6 +163345,12 @@ async function run() {
         const eventName = github.context.eventName;
         const isIssueComment = eventName === 'issue_comment';
         const isPullRequest = eventName === 'pull_request';
+        // Prevent recursive runs when commits are pushed to the sync branch itself
+        const currentRef = github.context.ref || '';
+        if (!isIssueComment && !isPullRequest && (currentRef === `refs/heads/${branchName}` || currentRef.endsWith(`/${branchName}`))) {
+            lib_core.info(`[SyncMyDep] Triggered on PR branch '${branchName}' itself. Skipping to prevent recursion.`);
+            return;
+        }
         // 4. Handle PR Comment Trigger
         if (isIssueComment) {
             const issue = github.context.payload.issue;

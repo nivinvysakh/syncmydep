@@ -326,14 +326,6 @@ export async function createOrUpdatePullRequest({
       title,
       body,
     });
-
-    await postIssueComment(
-      octokit,
-      owner,
-      repo,
-      prNumber,
-      `🔄 **SyncMyDep Update**: Refreshed dependency synchronization and pushed latest fixes.`,
-    );
   } else {
     core.info(`[SyncMyDep] Creating new Pull Request...`);
     const { data: newPr } = await octokit.rest.pulls.create({

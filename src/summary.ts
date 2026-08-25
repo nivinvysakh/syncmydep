@@ -185,20 +185,48 @@ export function buildCommentSummary({
  * Generates a markdown diff table for changed package versions.
  */
 function buildDependencyDiffTable(diffs: DependencyDiff[]): string {
-  let md = `### 🔄 Package Version Changes\n\n`;
-  md += `| Package | Old Version | New Version | Reason / Type |\n`;
-  md += `| :--- | :--- | :--- | :--- |\n`;
+  const directDiffs = diffs.filter((d) => d.type === 'prod' || d.type === 'dev');
+  const transitiveDiffs = diffs.filter((d) => d.type === 'transitive');
 
-  for (const diff of diffs) {
+  let md = `### 🔄 Package Version Changes\n\n`;
+
+  const renderRow = (diff: DependencyDiff) => {
     const oldV = diff.oldVersion ? `\`${diff.oldVersion}\`` : '—';
     const newV = diff.newVersion ? `\`${diff.newVersion}\`` : '—';
     let statusText: string = diff.reason || 'Direct Update';
     if (diff.changeType === 'added') statusText = '✨ Added';
     if (diff.changeType === 'removed') statusText = '🗑️ Removed';
+    return `| \`${diff.name}\` | ${oldV} | ${newV} | ${statusText} |\n`;
+  };
 
-    md += `| \`${diff.name}\` | ${oldV} | ${newV} | ${statusText} |\n`;
+  if (directDiffs.length > 0) {
+    md += `| Package | Old Version | New Version | Reason / Type |\n`;
+    md += `| :--- | :--- | :--- | :--- |\n`;
+    for (const diff of directDiffs) {
+      md += renderRow(diff);
+    }
+    md += `\n`;
   }
-  md += `\n`;
+
+  if (transitiveDiffs.length > 0) {
+    if (directDiffs.length === 0 && transitiveDiffs.length <= 5) {
+      md += `| Package | Old Version | New Version | Reason / Type |\n`;
+      md += `| :--- | :--- | :--- | :--- |\n`;
+      for (const diff of transitiveDiffs) {
+        md += renderRow(diff);
+      }
+      md += `\n`;
+    } else {
+      md += `<details>\n<summary>📦 <b>${transitiveDiffs.length} Sub-dependency Updates (Lockfile Drift)</b> (Click to expand)</summary>\n\n`;
+      md += `| Package | Old Version | New Version | Reason / Type |\n`;
+      md += `| :--- | :--- | :--- | :--- |\n`;
+      for (const diff of transitiveDiffs) {
+        md += renderRow(diff);
+      }
+      md += `\n</details>\n\n`;
+    }
+  }
+
   return md;
 }
 
