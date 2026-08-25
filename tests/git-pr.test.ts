@@ -6,6 +6,8 @@ import {
   closePullRequest,
   enablePullRequestAutoMerge,
   configureGitUser,
+  checkoutBranch,
+  commitAndPushChanges,
 } from "../src/git-pr";
 import { OctokitClient } from "../src/types";
 
@@ -53,6 +55,132 @@ describe("git-pr helpers", () => {
     expect(details.headBranch).toBe("feature/fix-auth");
     expect(details.baseBranch).toBe("main");
     expect(details.headRepo).toBe("owner/repo");
+    expect(details.isFork).toBe(false);
+  });
+
+  test("getPullRequestDetails detects fork PR correctly", async () => {
+    const forkMockOctokit = {
+      rest: {
+        pulls: {
+          get: jest.fn().mockResolvedValue({
+            data: {
+              number: 22,
+              title: "remove package-lock.json",
+              head: {
+                ref: "main",
+                repo: { full_name: "contributor/repo" },
+              },
+              base: { ref: "main" },
+              html_url: "https://github.com/owner/repo/pull/22",
+            },
+          }),
+        },
+      },
+    } as unknown as OctokitClient;
+
+    const details = await getPullRequestDetails(
+      forkMockOctokit,
+      "owner",
+      "repo",
+      22,
+    );
+
+    expect(details.number).toBe(22);
+    expect(details.headBranch).toBe("main");
+    expect(details.headRepo).toBe("contributor/repo");
+    expect(details.isFork).toBe(true);
+  });
+
+  test("checkoutBranch fetches PR head ref into dedicated working branch", async () => {
+    const mockedExec = exec.exec as jest.MockedFunction<typeof exec.exec>;
+    mockedExec.mockResolvedValue(0);
+
+    await checkoutBranch("/test/workspace", "main", 22);
+
+    expect(mockedExec).toHaveBeenCalledWith(
+      "git",
+      ["fetch", "origin", "pull/22/head:syncmydep-pr-22", "--force"],
+      expect.objectContaining({ cwd: "/test/workspace" }),
+    );
+    expect(mockedExec).toHaveBeenCalledWith(
+      "git",
+      ["checkout", "-B", "syncmydep-pr-22", "refs/heads/syncmydep-pr-22"],
+      expect.objectContaining({ cwd: "/test/workspace" }),
+    );
+  });
+
+  test("checkoutBranch fetches standard branch when no prNumber provided", async () => {
+    const mockedExec = exec.exec as jest.MockedFunction<typeof exec.exec>;
+    mockedExec.mockResolvedValue(0);
+
+    await checkoutBranch("/test/workspace", "feature/my-branch");
+
+    expect(mockedExec).toHaveBeenCalledWith(
+      "git",
+      ["fetch", "origin", "+refs/heads/feature/my-branch:refs/remotes/origin/feature/my-branch", "--force"],
+      expect.objectContaining({ cwd: "/test/workspace" }),
+    );
+    expect(mockedExec).toHaveBeenCalledWith(
+      "git",
+      ["checkout", "feature/my-branch"],
+      expect.objectContaining({ cwd: "/test/workspace" }),
+    );
+  });
+
+  test("commitAndPushChanges pushes to fork remote for fork PRs", async () => {
+    const mockedExec = exec.exec as jest.MockedFunction<typeof exec.exec>;
+    mockedExec.mockResolvedValue(0);
+
+    const result = await commitAndPushChanges({
+      workspaceDir: "/test/workspace",
+      branch: "main",
+      commitMessage: "chore(deps): sync lockfile",
+      files: ["package-lock.json"],
+      isFork: true,
+      headRepo: "contributor/repo",
+      token: "ghp_fake_token_123",
+    });
+
+    expect(result).toBe(true);
+    expect(mockedExec).toHaveBeenCalledWith(
+      "git",
+      ["add", "package-lock.json"],
+      expect.objectContaining({ cwd: "/test/workspace" }),
+    );
+    expect(mockedExec).toHaveBeenCalledWith(
+      "git",
+      ["commit", "-m", "chore(deps): sync lockfile"],
+      expect.objectContaining({ cwd: "/test/workspace" }),
+    );
+    expect(mockedExec).toHaveBeenCalledWith(
+      "git",
+      ["remote", "add", "pr-fork", "https://x-access-token:ghp_fake_token_123@github.com/contributor/repo.git"],
+      expect.objectContaining({ cwd: "/test/workspace" }),
+    );
+    expect(mockedExec).toHaveBeenCalledWith(
+      "git",
+      ["push", "pr-fork", "HEAD:main"],
+      expect.objectContaining({ cwd: "/test/workspace" }),
+    );
+  });
+
+  test("commitAndPushChanges pushes to origin for standard branches", async () => {
+    const mockedExec = exec.exec as jest.MockedFunction<typeof exec.exec>;
+    mockedExec.mockResolvedValue(0);
+
+    const result = await commitAndPushChanges({
+      workspaceDir: "/test/workspace",
+      branch: "feature/test",
+      commitMessage: "chore(deps): sync lockfile",
+      files: ["package-lock.json"],
+    });
+
+    expect(result).toBe(true);
+    expect(mockedExec).toHaveBeenCalledWith(
+      "git",
+      ["push", "origin", "HEAD:feature/test"],
+      expect.objectContaining({ cwd: "/test/workspace" }),
+    );
   });
 
   test("addCommentReaction posts reaction to comment", async () => {

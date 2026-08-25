@@ -99112,19 +99112,30 @@ async function rebaseAndRedoProcess(options) {
     // 7. Check git changes
     const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
     if (!hasChanges) {
-        lib_core.info(`[SyncMyDep] No changes detected after rebase on branch ${targetBranch}.`);
+        lib_core.info(`[SyncMyDep] No dependency changes detected after rebase. Force pushing rebased branch ${targetBranch}...`);
+        // Force push the rebased clean branch to remote / fork
+        const pushOptions = { cwd: workspaceDir, ignoreReturnCode: true };
+        if (isFork && headRepo && token) {
+            const remoteUrl = `https://x-access-token:${token}@github.com/${headRepo}.git`;
+            await lib_exec.exec("git", ["remote", "remove", "pr-fork"], { cwd: workspaceDir, silent: true, ignoreReturnCode: true });
+            await lib_exec.exec("git", ["remote", "add", "pr-fork", remoteUrl], { cwd: workspaceDir, silent: true, ignoreReturnCode: true });
+            await lib_exec.exec("git", ["push", "pr-fork", `HEAD:${targetBranch}`, "--force"], pushOptions);
+        }
+        else {
+            await lib_exec.exec("git", ["push", "origin", `HEAD:${targetBranch}`, "--force"], pushOptions);
+        }
         if (prNumber) {
             if (userTriggerCommentId) {
                 await addCommentReaction(octokit, owner, repo, userTriggerCommentId, "hooray");
             }
             if (botCommentId) {
-                await updateIssueComment(octokit, owner, repo, botCommentId, `✅ **SyncMyDep**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\`. All dependencies are already up-to-date and synchronized!`);
+                await updateIssueComment(octokit, owner, repo, botCommentId, `✅ **SyncMyDep**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\` and pushed! All dependencies are up-to-date and in sync.`);
             }
             else {
-                await postIssueComment(octokit, owner, repo, prNumber, `✅ **SyncMyDep**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\`. All dependencies are already up-to-date and synchronized!`);
+                await postIssueComment(octokit, owner, repo, prNumber, `✅ **SyncMyDep**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\` and pushed! All dependencies are up-to-date and in sync.`);
             }
         }
-        return { hasChanges: false, pushed: false, prNumber };
+        return { hasChanges: false, pushed: true, prNumber };
     }
     // 8. Stage, commit and force push
     const diffStat = await getGitDiffStat(workspaceDir, changedFiles);

@@ -278,8 +278,19 @@ export async function rebaseAndRedoProcess(
 
   if (!hasChanges) {
     core.info(
-      `[SyncMyDep] No changes detected after rebase on branch ${targetBranch}.`,
+      `[SyncMyDep] No dependency changes detected after rebase. Force pushing rebased branch ${targetBranch}...`,
     );
+
+    // Force push the rebased clean branch to remote / fork
+    const pushOptions = { cwd: workspaceDir, ignoreReturnCode: true };
+    if (isFork && headRepo && token) {
+      const remoteUrl = `https://x-access-token:${token}@github.com/${headRepo}.git`;
+      await exec.exec("git", ["remote", "remove", "pr-fork"], { cwd: workspaceDir, silent: true, ignoreReturnCode: true });
+      await exec.exec("git", ["remote", "add", "pr-fork", remoteUrl], { cwd: workspaceDir, silent: true, ignoreReturnCode: true });
+      await exec.exec("git", ["push", "pr-fork", `HEAD:${targetBranch}`, "--force"], pushOptions);
+    } else {
+      await exec.exec("git", ["push", "origin", `HEAD:${targetBranch}`, "--force"], pushOptions);
+    }
 
     if (prNumber) {
       if (userTriggerCommentId) {
@@ -291,7 +302,7 @@ export async function rebaseAndRedoProcess(
           owner,
           repo,
           botCommentId,
-          `✅ **SyncMyDep**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\`. All dependencies are already up-to-date and synchronized!`,
+          `✅ **SyncMyDep**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\` and pushed! All dependencies are up-to-date and in sync.`,
         );
       } else {
         await postIssueComment(
@@ -299,12 +310,12 @@ export async function rebaseAndRedoProcess(
           owner,
           repo,
           prNumber,
-          `✅ **SyncMyDep**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\`. All dependencies are already up-to-date and synchronized!`,
+          `✅ **SyncMyDep**: Branch \`${targetBranch}\` was successfully rebased onto \`${baseBranch}\` and pushed! All dependencies are up-to-date and in sync.`,
         );
       }
     }
 
-    return { hasChanges: false, pushed: false, prNumber };
+    return { hasChanges: false, pushed: true, prNumber };
   }
 
   // 8. Stage, commit and force push
