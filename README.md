@@ -175,25 +175,31 @@ require-owner: true
 
 ## ⚙️ Inputs Reference
 
-| Input               | Description                                                                          | Required | Default                                                     |
-| :------------------ | :----------------------------------------------------------------------------------- | :------: | :---------------------------------------------------------- |
-| `github-token`      | GitHub token for git push and opening PRs (`${{ secrets.GH_PAT \|\| secrets.GITHUB_TOKEN }}`) |    No    | `${{ github.token }}`                                       |
-| `package-manager`   | Package manager: `auto`, `npm`, `yarn`, `pnpm`, `bun`, `deno`                        |    No    | `auto`                                                      |
-| `working-directory` | Path to directory containing package manifest and lockfile                           |    No    | `.`                                                         |
-| `config-file`       | Optional path to custom `.syncmydep.yml` config file                                 |    No    | `""`                                                        |
-| `sync-lockfile`     | Synchronize lockfile with package specifications                                     |    No    | `true`                                                      |
-| `fix-audit`         | Run security vulnerability auto-fix                                                  |    No    | `true`                                                      |
-| `audit-level`       | Minimum vulnerability severity: `low`, `moderate`, `high`, `critical`                |    No    | `moderate`                                                  |
-| `check-only`        | Dry-run CI gating mode that emits step annotations and exits with code `1` on desync |    No    | `false`                                                     |
-| `direct-push`       | Commit and push directly to open PR branch on `pull_request` triggers                |    No    | `false`                                                     |
-| `pr-branch`         | Branch name to push fixes to                                                         |    No    | `syncmydep/dependency-fix`                                  |
-| `pr-title`          | Title for the generated Pull Request                                                 |    No    | `chore(deps): synchronize package.json and lockfile issues` |
-| `commit-message`    | Commit message for the updates                                                       |    No    | `chore(deps): synchronize package.json and lockfile issues` |
-| `pr-labels`         | Comma-separated labels to attach to the PR                                           |    No    | `dependencies, automated-pr`                                |
-| `pr-assignees`      | Comma-separated usernames to assign                                                  |    No    | `""`                                                        |
-| `pr-reviewers`      | Comma-separated usernames to request review from                                     |    No    | `""`                                                        |
-| `comment-trigger`   | Keyword that triggers sync on a PR comment                                           |    No    | `syncdep`                                                   |
-| `require-owner`     | Restrict comment trigger commands strictly to repository owners                      |    No    | `true`                                                      |
+| Input                 | Description                                                                          | Required | Default                                                     |
+| :-------------------- | :----------------------------------------------------------------------------------- | :------: | :---------------------------------------------------------- |
+| `github-token`        | GitHub token for git push and opening PRs (`${{ secrets.GH_PAT \|\| secrets.GITHUB_TOKEN }}`) |    No    | `${{ github.token }}`                                       |
+| `package-manager`     | Package manager: `auto`, `npm`, `yarn`, `pnpm`, `bun`, `deno`                        |    No    | `auto`                                                      |
+| `working-directory`   | Path to directory containing package manifest and lockfile                           |    No    | `.`                                                         |
+| `config-file`         | Optional path to custom `.syncmydep.yml` config file                                 |    No    | `""`                                                        |
+| `sync-lockfile`       | Synchronize lockfile with package specifications                                     |    No    | `true`                                                      |
+| `fix-audit`           | Run security vulnerability auto-fix                                                  |    No    | `true`                                                      |
+| `audit-level`         | Minimum vulnerability severity: `low`, `moderate`, `high`, `critical`                |    No    | `moderate`                                                  |
+| `check-only`          | Dry-run CI gating mode that emits step annotations and exits with code `1` on desync |    No    | `false`                                                     |
+| `direct-push`         | Commit and push directly to open PR branch on `pull_request` triggers                |    No    | `false`                                                     |
+| `pr-branch`           | Branch name to push fixes to                                                         |    No    | `syncmydep/dependency-fix`                                  |
+| `pr-title`            | Title for the generated Pull Request                                                 |    No    | `chore(deps): synchronize package.json and lockfile issues` |
+| `commit-message`      | Commit message for the updates                                                       |    No    | `chore(deps): synchronize package.json and lockfile issues` |
+| `pr-labels`           | Comma-separated labels to attach to the PR                                           |    No    | `dependencies, automated-pr`                                |
+| `pr-assignees`        | Comma-separated usernames to assign                                                  |    No    | `""`                                                        |
+| `pr-reviewers`        | Comma-separated usernames to request review from                                     |    No    | `""`                                                        |
+| `comment-trigger`     | Keyword that triggers sync on a PR comment                                           |    No    | `syncdep`                                                   |
+| `require-owner`       | Restrict comment trigger commands strictly to repository owners                      |    No    | `true`                                                      |
+| `verify-lockfile`     | Run dry-run frozen installation check on generated lockfile                          |    No    | `true`                                                      |
+| `run-build`           | Optional build smoke test command (e.g. `npm run build`) before opening PR           |    No    | `""`                                                        |
+| `fail-on-build-error` | Abort and fail if build smoke test encounters an error                               |    No    | `false`                                                     |
+| `auto-merge`          | Automatically enable auto-merge on the created Pull Request                          |    No    | `false`                                                     |
+| `auto-merge-method`   | Auto-merge strategy: `squash`, `merge`, or `rebase`                                  |    No    | `squash`                                                    |
+| `cache`               | Automatically restore and save package manager dependency caches                     |    No    | `true`                                                      |
 
 ---
 
