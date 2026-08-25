@@ -94,6 +94,10 @@ inputs:
     description: 'Merge method for auto-merge: "squash", "merge", or "rebase".'
     required: false
     default: 'squash'
+  cache:
+    description: 'Whether to automatically restore and save package manager caches to accelerate runs ("true" or "false").'
+    required: false
+    default: 'true'
 
 outputs:
   changes-detected:

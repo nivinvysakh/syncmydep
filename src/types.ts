@@ -66,6 +66,7 @@ export interface SyncMyDepConfig {
   failOnBuildError?: boolean;
   autoMerge?: boolean;
   autoMergeMethod?: 'squash' | 'merge' | 'rebase';
+  cache?: boolean;
 }
 
 export interface AuditInspectionResult {

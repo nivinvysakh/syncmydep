@@ -109,6 +109,7 @@ function normalizeConfig(raw: Record<string, unknown>): SyncMyDepConfig {
     runBuild: getVal<string>('runBuild', 'run-build', 'run_build', 'buildScript', 'build-script', 'build_script'),
     failOnBuildError: getVal<boolean>('failOnBuildError', 'fail-on-build-error', 'fail_on_build_error'),
     autoMerge: getVal<boolean>('autoMerge', 'auto-merge', 'auto_merge'),
-    autoMergeMethod: getVal<'squash' | 'merge' | 'rebase'>('autoMergeMethod', 'auto-merge-method', 'auto_merge_method')
+    autoMergeMethod: getVal<'squash' | 'merge' | 'rebase'>('autoMergeMethod', 'auto-merge-method', 'auto_merge_method'),
+    cache: getVal<boolean>('cache', 'cache')
   };
 }

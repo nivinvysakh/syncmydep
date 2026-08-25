@@ -33,6 +33,7 @@ import {
 import { loadConfigFile } from './config';
 import { detectWorkspace } from './workspace';
 import { ensurePackageManagerInstalled } from './installer';
+import { restorePackageCache, savePackageCache } from './cache';
 import { rebaseAndRedoProcess, deleteRemoteBranch } from './rebase-pr';
 import { buildMarkdownSummary, buildCommentSummary } from './summary';
 import { AuditInspectionResult, BuildVerificationResult } from './types';
@@ -83,6 +84,9 @@ async function run(): Promise<void> {
       ? core.getBooleanInput('auto-merge')
       : fileConfig.autoMerge ?? false;
     const autoMergeMethod = (core.getInput('auto-merge-method') || fileConfig.autoMergeMethod || 'squash').toLowerCase() as 'squash' | 'merge' | 'rebase';
+    const cacheOption = core.getInput('cache') !== ''
+      ? core.getBooleanInput('cache')
+      : fileConfig.cache ?? true;
 
     const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
@@ -323,6 +327,12 @@ async function run(): Promise<void> {
       throw new Error(`Package manifest was not found in ${workspaceDir}`);
     }
 
+    let cacheKey: string | undefined = undefined;
+    if (cacheOption) {
+      const cacheRestore = await restorePackageCache(workspaceDir, pm, yarnVariant);
+      cacheKey = cacheRestore.cacheKey;
+    }
+
     let auditBefore: AuditInspectionResult | null = null;
     let auditAfter: AuditInspectionResult | null = null;
 
@@ -342,6 +352,10 @@ async function run(): Promise<void> {
       const auditResult = await runAuditFix(workspaceDir, pm, auditLevel);
       fixedAudit = auditResult.success;
       auditAfter = await inspectAudit(workspaceDir, pm);
+    }
+
+    if (cacheOption && cacheKey) {
+      await savePackageCache(workspaceDir, pm, cacheKey, yarnVariant);
     }
 
     // Lockfile integrity verification
