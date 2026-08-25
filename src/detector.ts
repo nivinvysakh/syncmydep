@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as exec from '@actions/exec';
-import { PackageManager, YarnVariant, AuditInspectionResult } from './types';
+import { PackageManager, YarnVariant, AuditInspectionResult, VulnerabilityAdvisory } from './types';
 
 /**
  * Detects the appropriate package manager for the workspace.
@@ -122,6 +122,133 @@ export function getLockfileName(pm: PackageManager): string {
 }
 
 /**
+ * Normalizes advisory severity strings.
+ */
+function normalizeSeverity(
+  sev?: string,
+): 'critical' | 'high' | 'moderate' | 'low' | 'info' {
+  const s = (sev || 'moderate').toLowerCase();
+  if (s === 'critical') return 'critical';
+  if (s === 'high') return 'high';
+  if (s === 'moderate' || s === 'medium') return 'moderate';
+  if (s === 'low') return 'low';
+  return 'info';
+}
+
+/**
+ * Extracts vulnerability advisories from npm audit JSON output.
+ */
+export function parseNpmAuditAdvisories(raw: Record<string, unknown>): VulnerabilityAdvisory[] {
+  const advisories: VulnerabilityAdvisory[] = [];
+  const seenIds = new Set<string>();
+
+  // npm v7+ format (raw.vulnerabilities)
+  if (raw && raw.vulnerabilities && typeof raw.vulnerabilities === 'object') {
+    const vulns = raw.vulnerabilities as Record<string, unknown>;
+    for (const [pkgName, vulnData] of Object.entries(vulns)) {
+      if (!vulnData || typeof vulnData !== 'object') continue;
+      const vObj = vulnData as Record<string, unknown>;
+      const severity = normalizeSeverity(vObj.severity as string);
+      const fixAvailable = vObj.fixAvailable as Record<string, unknown> | boolean | undefined;
+      const patched =
+        typeof fixAvailable === 'object' && fixAvailable?.version
+          ? String(fixAvailable.version)
+          : undefined;
+
+      const viaList = Array.isArray(vObj.via) ? vObj.via : [];
+      for (const via of viaList) {
+        if (typeof via === 'object' && via !== null) {
+          const viaObj = via as Record<string, unknown>;
+          const id =
+            String(viaObj.url || '')
+              .split('/')
+              .pop() ||
+            (viaObj.source ? `GHSA-${viaObj.source}` : `ADV-${pkgName}`);
+          const title = String(viaObj.title || `${severity} vulnerability in ${pkgName}`);
+          const url = typeof viaObj.url === 'string' ? viaObj.url : undefined;
+
+          const key = `${id}-${pkgName}`;
+          if (!seenIds.has(key)) {
+            seenIds.add(key);
+            advisories.push({
+              id,
+              package: pkgName,
+              severity: normalizeSeverity(viaObj.severity as string || severity),
+              title,
+              patchedVersions: patched,
+              url
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Legacy npm v6 format (raw.advisories)
+  if (raw && raw.advisories && typeof raw.advisories === 'object') {
+    const advMap = raw.advisories as Record<string, Record<string, unknown>>;
+    for (const adv of Object.values(advMap)) {
+      if (!adv || typeof adv !== 'object') continue;
+      const cves = Array.isArray(adv.cves) ? adv.cves.map(String) : [];
+      const id = String(adv.github_advisory_id || cves[0] || adv.id || 'ADVISORY');
+      const pkg = String(adv.module_name || adv.package || 'unknown');
+      const key = `${id}-${pkg}`;
+      if (!seenIds.has(key)) {
+        seenIds.add(key);
+        advisories.push({
+          id,
+          package: pkg,
+          severity: normalizeSeverity(adv.severity as string),
+          title: String(adv.title || 'Security Advisory'),
+          patchedVersions: adv.patched_versions ? String(adv.patched_versions) : undefined,
+          url: adv.url ? String(adv.url) : undefined
+        });
+      }
+    }
+  }
+
+  return advisories;
+}
+
+/**
+ * Extracts vulnerability advisories from yarn audit JSON lines.
+ */
+export function parseYarnAuditAdvisories(stdout: string): VulnerabilityAdvisory[] {
+  const advisories: VulnerabilityAdvisory[] = [];
+  const seenIds = new Set<string>();
+  const lines = stdout.trim().split('\n');
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const parsed = JSON.parse(line);
+      if (parsed.type === 'auditAdvisory' && parsed.data?.advisory) {
+        const adv = parsed.data.advisory;
+        const cves = Array.isArray(adv.cves) ? adv.cves.map(String) : [];
+        const id = String(adv.github_advisory_id || cves[0] || adv.id || 'ADVISORY');
+        const pkg = String(adv.module_name || 'unknown');
+        const key = `${id}-${pkg}`;
+        if (!seenIds.has(key)) {
+          seenIds.add(key);
+          advisories.push({
+            id,
+            package: pkg,
+            severity: normalizeSeverity(adv.severity),
+            title: String(adv.title || 'Security Advisory'),
+            patchedVersions: adv.patched_versions ? String(adv.patched_versions) : undefined,
+            url: adv.url ? String(adv.url) : undefined
+          });
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return advisories;
+}
+
+/**
  * Runs a quick audit query to inspect vulnerabilities before/after fixing.
  */
 export async function inspectAudit(
@@ -152,9 +279,12 @@ export async function inspectAudit(
           ? Object.values(metadata.vulnerabilities as Record<string, number>).reduce((a, b) => a + b, 0)
           : (parsed.auditReportVersion ? Object.keys(parsed.vulnerabilities || {}).length : 0);
 
+        const advisories = parseNpmAuditAdvisories(parsed);
+
         return {
           total: total || 0,
           summary: vulnCounts,
+          advisories,
           raw: parsed
         };
       }
@@ -165,41 +295,33 @@ export async function inspectAudit(
         const metadata = parsed.metadata || {};
         const vulnCounts: Record<string, number> = metadata.vulnerabilities || {};
         const total = Object.values(vulnCounts).reduce((a, b) => a + b, 0);
+        const advisories = parseNpmAuditAdvisories(parsed);
+
         return {
           total: total || 0,
           summary: vulnCounts,
+          advisories,
           raw: parsed
         };
       }
     } else if (pm === 'yarn') {
       await exec.exec('yarn', ['audit', '--json'], options);
       if (stdout) {
-        let total = 0;
-        const lines = stdout.trim().split('\n');
-        for (const line of lines) {
-          try {
-            const data = JSON.parse(line);
-            if (data.type === 'auditAdvisory') {
-              total++;
-            }
-          } catch {
-            // ignore
-          }
-        }
+        const advisories = parseYarnAuditAdvisories(stdout);
         return {
-          total,
-          summary: { advisories: total },
+          total: advisories.length,
+          summary: { advisories: advisories.length },
+          advisories,
           raw: null
         };
       }
     } else if (pm === 'bun') {
       await exec.exec('bun', ['pm', 'scan'], options);
-      // bun pm scan output is parsed or treated as scanned
-      return { total: 0, summary: {}, raw: null };
+      return { total: 0, summary: {}, advisories: [], raw: null };
     }
   } catch {
     // If parsing fails, return empty
   }
 
-  return { total: 0, summary: {}, raw: null };
+  return { total: 0, summary: {}, advisories: [], raw: null };
 }

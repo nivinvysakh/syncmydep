@@ -6,6 +6,7 @@ import {
   YarnVariant,
   WorkspaceInfo,
   AuditInspectionResult,
+  BuildVerificationResult,
 } from "./types";
 import {
   commitAndPushChanges,
@@ -20,6 +21,8 @@ import {
   getGitStatus,
   getGitDiffStat,
   parseDependencyDiffs,
+  verifyLockfileIntegrity,
+  runBuildSmokeTest,
 } from "./fixer";
 import { inspectAudit } from "./detector";
 import { buildCommentSummary, buildMarkdownSummary } from "./summary";
@@ -46,6 +49,11 @@ export interface RebaseAndRedoOptions {
   labels?: string[];
   assignees?: string[];
   reviewers?: string[];
+  verifyLockfile?: boolean;
+  runBuild?: string;
+  failOnBuildError?: boolean;
+  autoMerge?: boolean;
+  autoMergeMethod?: 'squash' | 'merge' | 'rebase';
 }
 
 /**
@@ -183,6 +191,11 @@ export async function rebaseAndRedoProcess(
     labels = [],
     assignees = [],
     reviewers = [],
+    verifyLockfile = true,
+    runBuild,
+    failOnBuildError = false,
+    autoMerge = false,
+    autoMergeMethod = 'squash',
   } = options;
 
   const userTriggerCommentId = triggerCommentId || commentId;
@@ -228,7 +241,33 @@ export async function rebaseAndRedoProcess(
     auditAfter = await inspectAudit(workspaceDir, pm);
   }
 
-  // 5. Check git changes
+  // 5. Lockfile integrity verification
+  let lockfileVerified: boolean | undefined = undefined;
+  if (verifyLockfile) {
+    const integrityResult = await verifyLockfileIntegrity(workspaceDir, pm, yarnVariant);
+    lockfileVerified = integrityResult.success;
+  }
+
+  // 6. Build smoke test
+  let buildResult: BuildVerificationResult | null = null;
+  if (runBuild) {
+    buildResult = await runBuildSmokeTest(workspaceDir, runBuild);
+    if (!buildResult.success && failOnBuildError) {
+      core.error(`[SyncMyDep] Build smoke test failed: ${buildResult.output}`);
+      if (botCommentId) {
+        await updateIssueComment(
+          octokit,
+          owner,
+          repo,
+          botCommentId,
+          `❌ **SyncMyDep Rebase Aborted**: Build smoke test (\`${runBuild}\`) failed with errors.`
+        );
+      }
+      return { hasChanges: true, pushed: false, prNumber };
+    }
+  }
+
+  // 7. Check git changes
   const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
 
   if (!hasChanges) {
@@ -262,7 +301,7 @@ export async function rebaseAndRedoProcess(
     return { hasChanges: false, pushed: false, prNumber };
   }
 
-  // 6. Stage, commit and force push
+  // 8. Stage, commit and force push
   const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
   const dependencyDiffs = await parseDependencyDiffs(
     workspaceDir,
@@ -285,7 +324,7 @@ export async function rebaseAndRedoProcess(
     return { hasChanges: true, pushed: false, prNumber };
   }
 
-  // 7. PR Comment or PR Create/Update
+  // 9. PR Comment or PR Create/Update
   if (prNumber) {
     const commentMarkdown = buildCommentSummary({
       pm,
@@ -298,6 +337,8 @@ export async function rebaseAndRedoProcess(
       fixedAudit,
       auditBefore,
       auditAfter,
+      lockfileVerified,
+      buildResult,
       branch: targetBranch,
       commenter,
     });
@@ -337,6 +378,8 @@ export async function rebaseAndRedoProcess(
     fixedAudit,
     auditBefore,
     auditAfter,
+    lockfileVerified,
+    buildResult,
   });
 
   const prResult = await createOrUpdatePullRequest({
@@ -350,6 +393,8 @@ export async function rebaseAndRedoProcess(
     labels,
     assignees,
     reviewers,
+    autoMerge,
+    autoMergeMethod,
   });
 
   return { hasChanges: true, pushed: true, prNumber: prResult.number };

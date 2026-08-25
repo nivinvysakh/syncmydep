@@ -21,6 +21,11 @@ export interface RebaseAndRedoOptions {
     labels?: string[];
     assignees?: string[];
     reviewers?: string[];
+    verifyLockfile?: boolean;
+    runBuild?: string;
+    failOnBuildError?: boolean;
+    autoMerge?: boolean;
+    autoMergeMethod?: 'squash' | 'merge' | 'rebase';
 }
 /**
  * Deletes a local branch if it exists.

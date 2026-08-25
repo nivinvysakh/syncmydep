@@ -1,4 +1,28 @@
-import { SummaryOptions, CommentSummaryOptions, DependencyDiff } from './types';
+import {
+  SummaryOptions,
+  CommentSummaryOptions,
+  DependencyDiff,
+  VulnerabilityAdvisory
+} from './types';
+
+/**
+ * Maps severity level to badge/icon formatted text.
+ */
+function formatSeverity(sev: string): string {
+  switch (sev.toLowerCase()) {
+    case 'critical':
+      return '🔴 **Critical**';
+    case 'high':
+      return '🟠 **High**';
+    case 'moderate':
+    case 'medium':
+      return '🟡 **Moderate**';
+    case 'low':
+      return '🔵 **Low**';
+    default:
+      return '⚪ **Info**';
+  }
+}
 
 /**
  * Builds a rich Markdown description for the Pull Request and GitHub Step Summary.
@@ -13,7 +37,9 @@ export function buildMarkdownSummary({
   syncedLockfile,
   fixedAudit,
   auditBefore,
-  auditAfter
+  auditAfter,
+  lockfileVerified,
+  buildResult
 }: SummaryOptions): string {
   const pmDisplay = pm === 'yarn' && yarnVariant === 'berry' ? 'yarn (berry)' : pm;
   let md = `## 🤖 SyncMyDep: Automated Dependency Synchronization\n\n`;
@@ -26,10 +52,38 @@ export function buildMarkdownSummary({
   }
   md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
   md += `- **Security Audit Fix**: ${fixedAudit ? '✅ Applied' : '⏭️ Skipped'}\n`;
+  if (lockfileVerified !== undefined) {
+    md += `- **Lockfile Integrity Verification**: ${lockfileVerified ? '✅ Passed (dry-run installation verified)' : '⚠️ Warning (dry-run inspection failed)'}\n`;
+  }
+  if (buildResult) {
+    md += `- **Build Smoke Test**: ${buildResult.success ? `✅ Passed (\`${buildResult.command}\`)` : `⚠️ Failed (\`${buildResult.command}\`)`}\n`;
+  }
   md += `- **Modified Files**: ${changedFiles.length} file(s)\n\n`;
 
   if (dependencyDiffs && dependencyDiffs.length > 0) {
     md += buildDependencyDiffTable(dependencyDiffs);
+  }
+
+  if (auditBefore && auditBefore.advisories && auditBefore.advisories.length > 0) {
+    md += buildAdvisoryTable(auditBefore.advisories, fixedAudit);
+  } else if (auditBefore && auditBefore.total > 0) {
+    md += `### 🛡️ Vulnerability Audit\n\n`;
+    md += `- **Initial Vulnerabilities Detected**: ${auditBefore.total}\n`;
+    if (auditAfter) {
+      md += `- **Remaining Vulnerabilities After Fix**: ${auditAfter.total}\n`;
+    }
+    if (auditBefore.summary) {
+      md += `\n<details>\n<summary>View vulnerability breakdown</summary>\n\n`;
+      md += `\`\`\`json\n${JSON.stringify(auditBefore.summary, null, 2)}\n\`\`\`\n`;
+      md += `</details>\n\n`;
+    }
+  }
+
+  if (buildResult && !buildResult.success && buildResult.output) {
+    md += `### ⚠️ Build Smoke Test Logs\n\n`;
+    md += `<details>\n<summary>Click to view build error logs</summary>\n\n`;
+    md += `\`\`\`text\n${buildResult.output.slice(0, 3000)}\n\`\`\`\n`;
+    md += `</details>\n\n`;
   }
 
   md += `### 📁 Modified Dependency Files\n\n`;
@@ -45,23 +99,10 @@ export function buildMarkdownSummary({
     md += `\`\`\`text\n${diffStat}\n\`\`\`\n\n`;
   }
 
-  if (auditBefore && auditBefore.total > 0) {
-    md += `### 🛡️ Vulnerability Audit\n\n`;
-    md += `- **Initial Vulnerabilities Detected**: ${auditBefore.total}\n`;
-    if (auditAfter) {
-      md += `- **Remaining Vulnerabilities After Fix**: ${auditAfter.total}\n`;
-    }
-    if (auditBefore.summary) {
-      md += `\n<details>\n<summary>View vulnerability breakdown</summary>\n\n`;
-      md += `\`\`\`json\n${JSON.stringify(auditBefore.summary, null, 2)}\n\`\`\`\n`;
-      md += `</details>\n\n`;
-    }
-  }
-
   md += `### 🔍 Maintainer Checklist\n\n`;
   md += `- [ ] Verify automated CI test results pass.\n`;
-  md += `- [ ] Review any package version changes in \`package.json\` / lockfiles.\n`;
-  md += `- [ ] Merge this PR to ensure your repository dependencies stay synchronized and secure.\n\n`;
+  md += `- [ ] Review package version changes in \`package.json\` / lockfiles.\n`;
+  md += `- [ ] Merge this PR to keep repository dependencies synchronized and secure.\n\n`;
 
   md += `---\n*Generated automatically by [SyncMyDep GitHub Action](https://github.com/nivinvysakh/syncmydep).*`;
 
@@ -82,6 +123,8 @@ export function buildCommentSummary({
   fixedAudit,
   auditBefore,
   auditAfter,
+  lockfileVerified,
+  buildResult,
   branch,
   commenter
 }: CommentSummaryOptions): string {
@@ -98,10 +141,26 @@ export function buildCommentSummary({
   }
   md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
   md += `- **Security Audit Fix**: ${fixedAudit ? '✅ Applied' : '⏭️ Skipped'}\n`;
+  if (lockfileVerified !== undefined) {
+    md += `- **Lockfile Integrity**: ${lockfileVerified ? '✅ Passed' : '⚠️ Warning'}\n`;
+  }
+  if (buildResult) {
+    md += `- **Build Smoke Test**: ${buildResult.success ? `✅ Passed` : `⚠️ Failed`}\n`;
+  }
   md += `- **Files Updated**: ${changedFiles.length} file(s)\n\n`;
 
   if (dependencyDiffs && dependencyDiffs.length > 0) {
     md += buildDependencyDiffTable(dependencyDiffs);
+  }
+
+  if (auditBefore && auditBefore.advisories && auditBefore.advisories.length > 0) {
+    md += buildAdvisoryTable(auditBefore.advisories, fixedAudit);
+  } else if (auditBefore && auditBefore.total > 0) {
+    md += `#### 🛡️ Vulnerability Audit\n`;
+    md += `- **Initial Vulnerabilities**: ${auditBefore.total}\n`;
+    if (auditAfter) {
+      md += `- **Remaining Vulnerabilities**: ${auditAfter.total}\n`;
+    }
   }
 
   md += `#### 📁 Modified Dependency Files\n`;
@@ -117,19 +176,6 @@ export function buildCommentSummary({
     md += `\`\`\`text\n${diffStat}\n\`\`\`\n\n`;
   }
 
-  if (auditBefore && auditBefore.total > 0) {
-    md += `#### 🛡️ Vulnerability Audit\n`;
-    md += `- **Initial Vulnerabilities**: ${auditBefore.total}\n`;
-    if (auditAfter) {
-      md += `- **Remaining Vulnerabilities**: ${auditAfter.total}\n`;
-    }
-    if (auditBefore.summary) {
-      md += `\n<details>\n<summary>View vulnerability breakdown</summary>\n\n`;
-      md += `\`\`\`json\n${JSON.stringify(auditBefore.summary, null, 2)}\n\`\`\`\n`;
-      md += `</details>\n\n`;
-    }
-  }
-
   md += `---\n*Pushed directly to \`${branch}\` by [SyncMyDep](https://github.com/nivinvysakh/syncmydep).*`;
 
   return md;
@@ -140,17 +186,35 @@ export function buildCommentSummary({
  */
 function buildDependencyDiffTable(diffs: DependencyDiff[]): string {
   let md = `### 🔄 Package Version Changes\n\n`;
-  md += `| Package | Old Version | New Version | Change |\n`;
+  md += `| Package | Old Version | New Version | Reason / Type |\n`;
   md += `| :--- | :--- | :--- | :--- |\n`;
 
   for (const diff of diffs) {
     const oldV = diff.oldVersion ? `\`${diff.oldVersion}\`` : '—';
     const newV = diff.newVersion ? `\`${diff.newVersion}\`` : '—';
-    let statusIcon = '🔄 Updated';
-    if (diff.changeType === 'added') statusIcon = '✨ Added';
-    if (diff.changeType === 'removed') statusIcon = '🗑️ Removed';
+    let statusText: string = diff.reason || 'Direct Update';
+    if (diff.changeType === 'added') statusText = '✨ Added';
+    if (diff.changeType === 'removed') statusText = '🗑️ Removed';
 
-    md += `| \`${diff.name}\` | ${oldV} | ${newV} | ${statusIcon} |\n`;
+    md += `| \`${diff.name}\` | ${oldV} | ${newV} | ${statusText} |\n`;
+  }
+  md += `\n`;
+  return md;
+}
+
+/**
+ * Generates a markdown disclosure table for detected security advisories.
+ */
+function buildAdvisoryTable(advisories: VulnerabilityAdvisory[], fixed: boolean): string {
+  let md = `### 🛡️ Vulnerability & Security Advisory Disclosure\n\n`;
+  md += `The following security advisories were identified${fixed ? ' and patched' : ''}:\n\n`;
+  md += `| Severity | Advisory / CVE | Package | Patched In | Title |\n`;
+  md += `| :--- | :--- | :--- | :--- | :--- |\n`;
+
+  for (const adv of advisories) {
+    const idLink = adv.url ? `[${adv.id}](${adv.url})` : adv.id;
+    const patched = adv.patchedVersions ? `\`${adv.patchedVersions}\`` : '—';
+    md += `| ${formatSeverity(adv.severity)} | ${idLink} | \`${adv.package}\` | ${patched} | ${adv.title} |\n`;
   }
   md += `\n`;
   return md;

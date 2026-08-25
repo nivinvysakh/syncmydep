@@ -32,6 +32,10 @@ export declare function closePullRequest(octokit: OctokitClient, owner: string, 
  */
 export declare function updateIssueComment(octokit: OctokitClient, owner: string, repo: string, commentId: number, body: string): Promise<void>;
 /**
+ * Enables GitHub native auto-merge on a Pull Request via GraphQL API.
+ */
+export declare function enablePullRequestAutoMerge(octokit: OctokitClient, pullRequestNodeId: string, mergeMethod?: 'squash' | 'merge' | 'rebase'): Promise<boolean>;
+/**
  * Creates or updates a GitHub Pull Request using Octokit.
  */
-export declare function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, headBranch, title, body, labels, assignees, reviewers, }: CreateOrUpdatePullRequestParams): Promise<PullRequestResult>;
+export declare function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, headBranch, title, body, labels, assignees, reviewers, autoMerge, autoMergeMethod, }: CreateOrUpdatePullRequestParams): Promise<PullRequestResult>;

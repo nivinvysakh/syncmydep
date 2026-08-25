@@ -14,7 +14,9 @@ import {
   runAuditFix,
   getGitStatus,
   getGitDiffStat,
-  parseDependencyDiffs
+  parseDependencyDiffs,
+  verifyLockfileIntegrity,
+  runBuildSmokeTest
 } from './fixer';
 
 import {
@@ -33,7 +35,7 @@ import { detectWorkspace } from './workspace';
 import { ensurePackageManagerInstalled } from './installer';
 import { rebaseAndRedoProcess, deleteRemoteBranch } from './rebase-pr';
 import { buildMarkdownSummary, buildCommentSummary } from './summary';
-import { AuditInspectionResult } from './types';
+import { AuditInspectionResult, BuildVerificationResult } from './types';
 
 async function run(): Promise<void> {
   try {
@@ -70,6 +72,17 @@ async function run(): Promise<void> {
     const requireOwner = core.getInput('require-owner') !== ''
       ? core.getBooleanInput('require-owner')
       : fileConfig.requireOwner ?? true;
+    const verifyLockfileOption = core.getInput('verify-lockfile') !== ''
+      ? core.getBooleanInput('verify-lockfile')
+      : fileConfig.verifyLockfile ?? true;
+    const runBuild = core.getInput('run-build') || fileConfig.runBuild || '';
+    const failOnBuildError = core.getInput('fail-on-build-error') !== ''
+      ? core.getBooleanInput('fail-on-build-error')
+      : fileConfig.failOnBuildError ?? false;
+    const autoMergeOption = core.getInput('auto-merge') !== ''
+      ? core.getBooleanInput('auto-merge')
+      : fileConfig.autoMerge ?? false;
+    const autoMergeMethod = (core.getInput('auto-merge-method') || fileConfig.autoMergeMethod || 'squash').toLowerCase() as 'squash' | 'merge' | 'rebase';
 
     const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
@@ -173,7 +186,12 @@ async function run(): Promise<void> {
           prTitle,
           labels,
           assignees,
-          reviewers
+          reviewers,
+          verifyLockfile: verifyLockfileOption,
+          runBuild,
+          failOnBuildError,
+          autoMerge: autoMergeOption,
+          autoMergeMethod
         });
         return;
       }
@@ -326,6 +344,23 @@ async function run(): Promise<void> {
       auditAfter = await inspectAudit(workspaceDir, pm);
     }
 
+    // Lockfile integrity verification
+    let lockfileVerified: boolean | undefined = undefined;
+    if (verifyLockfileOption) {
+      const integrityResult = await verifyLockfileIntegrity(workspaceDir, pm, yarnVariant);
+      lockfileVerified = integrityResult.success;
+    }
+
+    // Build smoke test
+    let buildResult: BuildVerificationResult | null = null;
+    if (runBuild && !checkOnly) {
+      buildResult = await runBuildSmokeTest(workspaceDir, runBuild);
+      if (!buildResult.success && failOnBuildError) {
+        core.setFailed(`[SyncMyDep] Build smoke test failed: ${buildResult.output}`);
+        return;
+      }
+    }
+
     const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
 
     // 6. Check-Only / CI Gating Mode
@@ -394,7 +429,9 @@ async function run(): Promise<void> {
       syncedLockfile,
       fixedAudit,
       auditBefore,
-      auditAfter
+      auditAfter,
+      lockfileVerified,
+      buildResult
     });
 
     if (!token) {
@@ -473,7 +510,9 @@ async function run(): Promise<void> {
       body: prBody,
       labels,
       assignees,
-      reviewers
+      reviewers,
+      autoMerge: autoMergeOption,
+      autoMergeMethod
     });
 
     core.setOutput('pull-request-number', String(prResult.number));

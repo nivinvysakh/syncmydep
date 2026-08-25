@@ -234,6 +234,48 @@ export async function updateIssueComment(
 }
 
 /**
+ * Enables GitHub native auto-merge on a Pull Request via GraphQL API.
+ */
+export async function enablePullRequestAutoMerge(
+  octokit: OctokitClient,
+  pullRequestNodeId: string,
+  mergeMethod: 'squash' | 'merge' | 'rebase' = 'squash',
+): Promise<boolean> {
+  try {
+    const methodEnum = mergeMethod.toUpperCase() as 'SQUASH' | 'MERGE' | 'REBASE';
+    const mutation = `
+      mutation EnableAutoMerge($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
+        enablePullRequestAutoMerge(input: {
+          pullRequestId: $pullRequestId,
+          mergeMethod: $mergeMethod
+        }) {
+          pullRequest {
+            id
+            autoMergeRequest {
+              enabledAt
+              enabledBy {
+                login
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    await octokit.graphql(mutation, {
+      pullRequestId: pullRequestNodeId,
+      mergeMethod: methodEnum,
+    });
+    core.info(`[SyncMyDep] Successfully enabled auto-merge (${mergeMethod}) on Pull Request.`);
+    return true;
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    core.info(`[SyncMyDep] Auto-merge not enabled (requires 'Allow auto-merge' in repo settings): ${errMsg}`);
+    return false;
+  }
+}
+
+/**
  * Creates or updates a GitHub Pull Request using Octokit.
  */
 export async function createOrUpdatePullRequest({
@@ -247,6 +289,8 @@ export async function createOrUpdatePullRequest({
   labels = [],
   assignees = [],
   reviewers = [],
+  autoMerge = false,
+  autoMergeMethod = 'squash',
 }: CreateOrUpdatePullRequestParams): Promise<PullRequestResult> {
   core.info(
     `[SyncMyDep] Checking for existing Pull Request for branch ${headBranch}...`,
@@ -263,12 +307,14 @@ export async function createOrUpdatePullRequest({
 
   let prNumber: number;
   let prUrl: string;
+  let nodeId: string | undefined;
   let isNew = false;
 
   if (pullRequests && pullRequests.length > 0) {
     const existingPr = pullRequests[0];
     prNumber = existingPr.number;
     prUrl = existingPr.html_url;
+    nodeId = existingPr.node_id;
     core.info(
       `[SyncMyDep] Found existing Pull Request #${prNumber}. Updating...`,
     );
@@ -301,6 +347,7 @@ export async function createOrUpdatePullRequest({
 
     prNumber = newPr.number;
     prUrl = newPr.html_url;
+    nodeId = newPr.node_id;
     isNew = true;
     core.info(
       `[SyncMyDep] Successfully created Pull Request #${prNumber}: ${prUrl}`,
@@ -354,9 +401,15 @@ export async function createOrUpdatePullRequest({
     }
   }
 
+  // Auto-merge
+  if (autoMerge && nodeId) {
+    await enablePullRequestAutoMerge(octokit, nodeId, autoMergeMethod);
+  }
+
   return {
     number: prNumber,
     url: prUrl,
+    nodeId,
     isNew,
   };
 }

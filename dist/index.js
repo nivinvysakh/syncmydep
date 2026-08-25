@@ -31955,6 +31955,127 @@ function getLockfileName(pm) {
     }
 }
 /**
+ * Normalizes advisory severity strings.
+ */
+function normalizeSeverity(sev) {
+    const s = (sev || 'moderate').toLowerCase();
+    if (s === 'critical')
+        return 'critical';
+    if (s === 'high')
+        return 'high';
+    if (s === 'moderate' || s === 'medium')
+        return 'moderate';
+    if (s === 'low')
+        return 'low';
+    return 'info';
+}
+/**
+ * Extracts vulnerability advisories from npm audit JSON output.
+ */
+function parseNpmAuditAdvisories(raw) {
+    const advisories = [];
+    const seenIds = new Set();
+    // npm v7+ format (raw.vulnerabilities)
+    if (raw && raw.vulnerabilities && typeof raw.vulnerabilities === 'object') {
+        const vulns = raw.vulnerabilities;
+        for (const [pkgName, vulnData] of Object.entries(vulns)) {
+            if (!vulnData || typeof vulnData !== 'object')
+                continue;
+            const vObj = vulnData;
+            const severity = normalizeSeverity(vObj.severity);
+            const fixAvailable = vObj.fixAvailable;
+            const patched = typeof fixAvailable === 'object' && fixAvailable?.version
+                ? String(fixAvailable.version)
+                : undefined;
+            const viaList = Array.isArray(vObj.via) ? vObj.via : [];
+            for (const via of viaList) {
+                if (typeof via === 'object' && via !== null) {
+                    const viaObj = via;
+                    const id = String(viaObj.url || '')
+                        .split('/')
+                        .pop() ||
+                        (viaObj.source ? `GHSA-${viaObj.source}` : `ADV-${pkgName}`);
+                    const title = String(viaObj.title || `${severity} vulnerability in ${pkgName}`);
+                    const url = typeof viaObj.url === 'string' ? viaObj.url : undefined;
+                    const key = `${id}-${pkgName}`;
+                    if (!seenIds.has(key)) {
+                        seenIds.add(key);
+                        advisories.push({
+                            id,
+                            package: pkgName,
+                            severity: normalizeSeverity(viaObj.severity || severity),
+                            title,
+                            patchedVersions: patched,
+                            url
+                        });
+                    }
+                }
+            }
+        }
+    }
+    // Legacy npm v6 format (raw.advisories)
+    if (raw && raw.advisories && typeof raw.advisories === 'object') {
+        const advMap = raw.advisories;
+        for (const adv of Object.values(advMap)) {
+            if (!adv || typeof adv !== 'object')
+                continue;
+            const cves = Array.isArray(adv.cves) ? adv.cves.map(String) : [];
+            const id = String(adv.github_advisory_id || cves[0] || adv.id || 'ADVISORY');
+            const pkg = String(adv.module_name || adv.package || 'unknown');
+            const key = `${id}-${pkg}`;
+            if (!seenIds.has(key)) {
+                seenIds.add(key);
+                advisories.push({
+                    id,
+                    package: pkg,
+                    severity: normalizeSeverity(adv.severity),
+                    title: String(adv.title || 'Security Advisory'),
+                    patchedVersions: adv.patched_versions ? String(adv.patched_versions) : undefined,
+                    url: adv.url ? String(adv.url) : undefined
+                });
+            }
+        }
+    }
+    return advisories;
+}
+/**
+ * Extracts vulnerability advisories from yarn audit JSON lines.
+ */
+function parseYarnAuditAdvisories(stdout) {
+    const advisories = [];
+    const seenIds = new Set();
+    const lines = stdout.trim().split('\n');
+    for (const line of lines) {
+        if (!line.trim())
+            continue;
+        try {
+            const parsed = JSON.parse(line);
+            if (parsed.type === 'auditAdvisory' && parsed.data?.advisory) {
+                const adv = parsed.data.advisory;
+                const cves = Array.isArray(adv.cves) ? adv.cves.map(String) : [];
+                const id = String(adv.github_advisory_id || cves[0] || adv.id || 'ADVISORY');
+                const pkg = String(adv.module_name || 'unknown');
+                const key = `${id}-${pkg}`;
+                if (!seenIds.has(key)) {
+                    seenIds.add(key);
+                    advisories.push({
+                        id,
+                        package: pkg,
+                        severity: normalizeSeverity(adv.severity),
+                        title: String(adv.title || 'Security Advisory'),
+                        patchedVersions: adv.patched_versions ? String(adv.patched_versions) : undefined,
+                        url: adv.url ? String(adv.url) : undefined
+                    });
+                }
+            }
+        }
+        catch {
+            // ignore
+        }
+    }
+    return advisories;
+}
+/**
  * Runs a quick audit query to inspect vulnerabilities before/after fixing.
  */
 async function inspectAudit(workspaceDir, pm) {
@@ -31979,9 +32100,11 @@ async function inspectAudit(workspaceDir, pm) {
                 const total = typeof metadata.vulnerabilities === 'object'
                     ? Object.values(metadata.vulnerabilities).reduce((a, b) => a + b, 0)
                     : (parsed.auditReportVersion ? Object.keys(parsed.vulnerabilities || {}).length : 0);
+                const advisories = parseNpmAuditAdvisories(parsed);
                 return {
                     total: total || 0,
                     summary: vulnCounts,
+                    advisories,
                     raw: parsed
                 };
             }
@@ -31993,9 +32116,11 @@ async function inspectAudit(workspaceDir, pm) {
                 const metadata = parsed.metadata || {};
                 const vulnCounts = metadata.vulnerabilities || {};
                 const total = Object.values(vulnCounts).reduce((a, b) => a + b, 0);
+                const advisories = parseNpmAuditAdvisories(parsed);
                 return {
                     total: total || 0,
                     summary: vulnCounts,
+                    advisories,
                     raw: parsed
                 };
             }
@@ -32003,36 +32128,24 @@ async function inspectAudit(workspaceDir, pm) {
         else if (pm === 'yarn') {
             await lib_exec.exec('yarn', ['audit', '--json'], options);
             if (stdout) {
-                let total = 0;
-                const lines = stdout.trim().split('\n');
-                for (const line of lines) {
-                    try {
-                        const data = JSON.parse(line);
-                        if (data.type === 'auditAdvisory') {
-                            total++;
-                        }
-                    }
-                    catch {
-                        // ignore
-                    }
-                }
+                const advisories = parseYarnAuditAdvisories(stdout);
                 return {
-                    total,
-                    summary: { advisories: total },
+                    total: advisories.length,
+                    summary: { advisories: advisories.length },
+                    advisories,
                     raw: null
                 };
             }
         }
         else if (pm === 'bun') {
             await lib_exec.exec('bun', ['pm', 'scan'], options);
-            // bun pm scan output is parsed or treated as scanned
-            return { total: 0, summary: {}, raw: null };
+            return { total: 0, summary: {}, advisories: [], raw: null };
         }
     }
     catch {
         // If parsing fails, return empty
     }
-    return { total: 0, summary: {}, raw: null };
+    return { total: 0, summary: {}, advisories: [], raw: null };
 }
 
 ;// CONCATENATED MODULE: ./src/fixer.ts
@@ -32224,77 +32337,241 @@ async function getGitDiffStat(workspaceDir, files) {
     return diffOutput.trim();
 }
 /**
- * Parses package.json diffs to extract added, upgraded, or removed dependency items.
+ * Parses package.json and lockfile diffs to extract added, upgraded, or removed dependency items.
  */
 async function parseDependencyDiffs(workspaceDir, changedFiles) {
+    const diffs = [];
+    const handledPackages = new Set();
+    // 1. Direct dependencies from package.json
     const pkgFiles = changedFiles.filter((f) => f.endsWith('package.json'));
-    if (pkgFiles.length === 0)
-        return [];
-    let diffText = '';
+    if (pkgFiles.length > 0) {
+        let pkgDiffText = '';
+        const options = {
+            cwd: workspaceDir,
+            ignoreReturnCode: true,
+            silent: true,
+            listeners: {
+                stdout: (data) => {
+                    pkgDiffText += data.toString();
+                }
+            }
+        };
+        await lib_exec.exec('git', ['diff', '-U1', '--', ...pkgFiles], options);
+        if (pkgDiffText) {
+            const lines = pkgDiffText.split('\n');
+            const removedMap = new Map();
+            const addedMap = new Map();
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('-') && !trimmed.startsWith('---')) {
+                    const match = trimmed.match(/^-\s*"([^"]+)":\s*"([^"]+)"/);
+                    if (match) {
+                        removedMap.set(match[1], match[2]);
+                    }
+                }
+                else if (trimmed.startsWith('+') && !trimmed.startsWith('+++')) {
+                    const match = trimmed.match(/^\+\s*"([^"]+)":\s*"([^"]+)"/);
+                    if (match) {
+                        addedMap.set(match[1], match[2]);
+                    }
+                }
+            }
+            // Detect upgrades/downgrades & added
+            for (const [pkg, newVer] of addedMap.entries()) {
+                handledPackages.add(pkg);
+                if (removedMap.has(pkg)) {
+                    const oldVer = removedMap.get(pkg);
+                    removedMap.delete(pkg);
+                    diffs.push({
+                        name: pkg,
+                        type: 'prod',
+                        oldVersion: oldVer,
+                        newVersion: newVer,
+                        changeType: 'upgraded',
+                        reason: 'Direct Update'
+                    });
+                }
+                else {
+                    diffs.push({
+                        name: pkg,
+                        type: 'prod',
+                        newVersion: newVer,
+                        changeType: 'added',
+                        reason: 'Direct Update'
+                    });
+                }
+            }
+            // Remaining in removedMap are deletions
+            for (const [pkg, oldVer] of removedMap.entries()) {
+                handledPackages.add(pkg);
+                diffs.push({
+                    name: pkg,
+                    type: 'prod',
+                    oldVersion: oldVer,
+                    changeType: 'removed',
+                    reason: 'Direct Update'
+                });
+            }
+        }
+    }
+    // 2. Lockfile diffs for transitive dependencies or lockfile drift
+    const lockFiles = changedFiles.filter((f) => f.endsWith('package-lock.json') ||
+        f.endsWith('yarn.lock') ||
+        f.endsWith('pnpm-lock.yaml') ||
+        f.endsWith('bun.lock'));
+    if (lockFiles.length > 0) {
+        let lockDiffText = '';
+        const lockOptions = {
+            cwd: workspaceDir,
+            ignoreReturnCode: true,
+            silent: true,
+            listeners: {
+                stdout: (data) => {
+                    lockDiffText += data.toString();
+                }
+            }
+        };
+        await lib_exec.exec('git', ['diff', '-U3', '--', ...lockFiles], lockOptions);
+        if (lockDiffText) {
+            const lockLines = lockDiffText.split('\n');
+            let currentPkg = null;
+            let oldVersion = null;
+            let newVersion = null;
+            for (let i = 0; i < lockLines.length; i++) {
+                const line = lockLines[i];
+                // Match package-lock node_modules entry
+                const nodeModulesMatch = line.match(/"node_modules\/((?:@[^/]+\/)?[^/"]+)":/);
+                if (nodeModulesMatch) {
+                    currentPkg = nodeModulesMatch[1];
+                    oldVersion = null;
+                    newVersion = null;
+                }
+                // Match yarn.lock or pnpm header
+                const yarnPkgMatch = line.match(/^"?((?:@[^/]+\/)?[^@\s"]+)@/);
+                if (yarnPkgMatch && !line.startsWith('-') && !line.startsWith('+')) {
+                    currentPkg = yarnPkgMatch[1];
+                    oldVersion = null;
+                    newVersion = null;
+                }
+                // Version changes
+                if (line.startsWith('-') && !line.startsWith('---')) {
+                    const vMatch = line.match(/version["\s:]+([0-9a-zA-Z.-]+)/);
+                    if (vMatch)
+                        oldVersion = vMatch[1];
+                }
+                else if (line.startsWith('+') && !line.startsWith('+++')) {
+                    const vMatch = line.match(/version["\s:]+([0-9a-zA-Z.-]+)/);
+                    if (vMatch)
+                        newVersion = vMatch[1];
+                }
+                if (currentPkg && oldVersion && newVersion && oldVersion !== newVersion) {
+                    if (!handledPackages.has(currentPkg)) {
+                        handledPackages.add(currentPkg);
+                        diffs.push({
+                            name: currentPkg,
+                            type: 'transitive',
+                            oldVersion,
+                            newVersion,
+                            changeType: 'upgraded',
+                            reason: 'Lockfile Drift'
+                        });
+                    }
+                    oldVersion = null;
+                    newVersion = null;
+                }
+            }
+        }
+    }
+    return diffs;
+}
+/**
+ * Runs a dry-run / frozen check to verify that the generated lockfile is structurally integral.
+ */
+async function verifyLockfileIntegrity(workspaceDir, pm, yarnVariant = 'classic') {
+    let command = 'npm';
+    let args = [];
+    switch (pm) {
+        case 'pnpm':
+            command = 'pnpm';
+            args = ['install', '--frozen-lockfile', '--prefer-offline'];
+            break;
+        case 'yarn':
+            command = 'yarn';
+            if (yarnVariant === 'berry') {
+                args = ['install', '--immutable'];
+            }
+            else {
+                args = ['install', '--frozen-lockfile', '--prefer-offline'];
+            }
+            break;
+        case 'bun':
+            command = 'bun';
+            args = ['install', '--frozen-lockfile'];
+            break;
+        case 'deno':
+            command = 'deno';
+            args = ['install', '--frozen'];
+            break;
+        case 'npm':
+        default:
+            command = 'npm';
+            args = ['ci', '--dry-run'];
+            break;
+    }
+    lib_core.info(`[SyncMyDep] Verifying lockfile integrity using ${command} ${args.join(' ')}...`);
+    let output = '';
     const options = {
         cwd: workspaceDir,
         ignoreReturnCode: true,
         silent: true,
         listeners: {
             stdout: (data) => {
-                diffText += data.toString();
+                output += data.toString();
+            },
+            stderr: (data) => {
+                output += data.toString();
             }
         }
     };
-    await lib_exec.exec('git', ['diff', '-U1', '--', ...pkgFiles], options);
-    if (!diffText)
-        return [];
-    const diffs = [];
-    const lines = diffText.split('\n');
-    const removedMap = new Map();
-    const addedMap = new Map();
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('-') && !trimmed.startsWith('---')) {
-            const match = trimmed.match(/^-\s*"([^"]+)":\s*"([^"]+)"/);
-            if (match) {
-                removedMap.set(match[1], match[2]);
+    let exitCode = await lib_exec.exec(command, args, options);
+    // Fallback for npm if `npm ci --dry-run` is not supported on older npm
+    if (exitCode !== 0 && pm === 'npm') {
+        lib_core.info('[SyncMyDep] Falling back to npm ls for integrity check...');
+        exitCode = await lib_exec.exec('npm', ['ls', '--depth=0'], options);
+    }
+    return {
+        success: exitCode === 0,
+        output: output.trim()
+    };
+}
+/**
+ * Runs a custom build smoke test command if configured (e.g. `npm run build`).
+ */
+async function runBuildSmokeTest(workspaceDir, buildCommand) {
+    if (!buildCommand || !buildCommand.trim()) {
+        return { command: '', success: true, output: '' };
+    }
+    const trimmed = buildCommand.trim();
+    lib_core.info(`[SyncMyDep] Running build smoke test: ${trimmed}...`);
+    let output = '';
+    const options = {
+        cwd: workspaceDir,
+        ignoreReturnCode: true,
+        listeners: {
+            stdout: (data) => {
+                output += data.toString();
+            },
+            stderr: (data) => {
+                output += data.toString();
             }
         }
-        else if (trimmed.startsWith('+') && !trimmed.startsWith('+++')) {
-            const match = trimmed.match(/^\+\s*"([^"]+)":\s*"([^"]+)"/);
-            if (match) {
-                addedMap.set(match[1], match[2]);
-            }
-        }
-    }
-    // Detect upgrades/downgrades & added
-    for (const [pkg, newVer] of addedMap.entries()) {
-        if (removedMap.has(pkg)) {
-            const oldVer = removedMap.get(pkg);
-            removedMap.delete(pkg);
-            diffs.push({
-                name: pkg,
-                type: 'prod',
-                oldVersion: oldVer,
-                newVersion: newVer,
-                changeType: 'upgraded'
-            });
-        }
-        else {
-            diffs.push({
-                name: pkg,
-                type: 'prod',
-                newVersion: newVer,
-                changeType: 'added'
-            });
-        }
-    }
-    // Remaining in removedMap are deletions
-    for (const [pkg, oldVer] of removedMap.entries()) {
-        diffs.push({
-            name: pkg,
-            type: 'prod',
-            oldVersion: oldVer,
-            changeType: 'removed'
-        });
-    }
-    return diffs;
+    };
+    const exitCode = await lib_exec.exec(trimmed, [], options);
+    return {
+        command: trimmed,
+        success: exitCode === 0,
+        output: output.trim()
+    };
 }
 
 ;// CONCATENATED MODULE: ./src/git-pr.ts
@@ -32452,9 +32729,46 @@ async function updateIssueComment(octokit, owner, repo, commentId, body) {
     }
 }
 /**
+ * Enables GitHub native auto-merge on a Pull Request via GraphQL API.
+ */
+async function enablePullRequestAutoMerge(octokit, pullRequestNodeId, mergeMethod = 'squash') {
+    try {
+        const methodEnum = mergeMethod.toUpperCase();
+        const mutation = `
+      mutation EnableAutoMerge($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
+        enablePullRequestAutoMerge(input: {
+          pullRequestId: $pullRequestId,
+          mergeMethod: $mergeMethod
+        }) {
+          pullRequest {
+            id
+            autoMergeRequest {
+              enabledAt
+              enabledBy {
+                login
+              }
+            }
+          }
+        }
+      }
+    `;
+        await octokit.graphql(mutation, {
+            pullRequestId: pullRequestNodeId,
+            mergeMethod: methodEnum,
+        });
+        lib_core.info(`[SyncMyDep] Successfully enabled auto-merge (${mergeMethod}) on Pull Request.`);
+        return true;
+    }
+    catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        lib_core.info(`[SyncMyDep] Auto-merge not enabled (requires 'Allow auto-merge' in repo settings): ${errMsg}`);
+        return false;
+    }
+}
+/**
  * Creates or updates a GitHub Pull Request using Octokit.
  */
-async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, headBranch, title, body, labels = [], assignees = [], reviewers = [], }) {
+async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, headBranch, title, body, labels = [], assignees = [], reviewers = [], autoMerge = false, autoMergeMethod = 'squash', }) {
     lib_core.info(`[SyncMyDep] Checking for existing Pull Request for branch ${headBranch}...`);
     // Query existing PRs
     const { data: pullRequests } = await octokit.rest.pulls.list({
@@ -32466,11 +32780,13 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
     });
     let prNumber;
     let prUrl;
+    let nodeId;
     let isNew = false;
     if (pullRequests && pullRequests.length > 0) {
         const existingPr = pullRequests[0];
         prNumber = existingPr.number;
         prUrl = existingPr.html_url;
+        nodeId = existingPr.node_id;
         lib_core.info(`[SyncMyDep] Found existing Pull Request #${prNumber}. Updating...`);
         await octokit.rest.pulls.update({
             owner,
@@ -32493,6 +32809,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
         });
         prNumber = newPr.number;
         prUrl = newPr.html_url;
+        nodeId = newPr.node_id;
         isNew = true;
         lib_core.info(`[SyncMyDep] Successfully created Pull Request #${prNumber}: ${prUrl}`);
     }
@@ -32541,9 +32858,14 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
             lib_core.warning(`Could not request reviewers for PR #${prNumber}: ${errMsg}`);
         }
     }
+    // Auto-merge
+    if (autoMerge && nodeId) {
+        await enablePullRequestAutoMerge(octokit, nodeId, autoMergeMethod);
+    }
     return {
         number: prNumber,
         url: prUrl,
+        nodeId,
         isNew,
     };
 }
@@ -36215,7 +36537,12 @@ function normalizeConfig(raw) {
         prAssignees: normalizeList(assignees),
         prReviewers: normalizeList(reviewers),
         commentTrigger: getVal('commentTrigger', 'comment-trigger', 'comment_trigger'),
-        requireOwner: getVal('requireOwner', 'require-owner', 'require_owner')
+        requireOwner: getVal('requireOwner', 'require-owner', 'require_owner'),
+        verifyLockfile: getVal('verifyLockfile', 'verify-lockfile', 'verify_lockfile'),
+        runBuild: getVal('runBuild', 'run-build', 'run_build', 'buildScript', 'build-script', 'build_script'),
+        failOnBuildError: getVal('failOnBuildError', 'fail-on-build-error', 'fail_on_build_error'),
+        autoMerge: getVal('autoMerge', 'auto-merge', 'auto_merge'),
+        autoMergeMethod: getVal('autoMergeMethod', 'auto-merge-method', 'auto_merge_method')
     };
 }
 
@@ -36408,9 +36735,27 @@ async function ensurePackageManagerInstalled(pm) {
 
 ;// CONCATENATED MODULE: ./src/summary.ts
 /**
+ * Maps severity level to badge/icon formatted text.
+ */
+function formatSeverity(sev) {
+    switch (sev.toLowerCase()) {
+        case 'critical':
+            return '🔴 **Critical**';
+        case 'high':
+            return '🟠 **High**';
+        case 'moderate':
+        case 'medium':
+            return '🟡 **Moderate**';
+        case 'low':
+            return '🔵 **Low**';
+        default:
+            return '⚪ **Info**';
+    }
+}
+/**
  * Builds a rich Markdown description for the Pull Request and GitHub Step Summary.
  */
-function buildMarkdownSummary({ pm, yarnVariant, workspaceInfo, changedFiles, diffStat, dependencyDiffs = [], syncedLockfile, fixedAudit, auditBefore, auditAfter }) {
+function buildMarkdownSummary({ pm, yarnVariant, workspaceInfo, changedFiles, diffStat, dependencyDiffs = [], syncedLockfile, fixedAudit, auditBefore, auditAfter, lockfileVerified, buildResult }) {
     const pmDisplay = pm === 'yarn' && yarnVariant === 'berry' ? 'yarn (berry)' : pm;
     let md = `## 🤖 SyncMyDep: Automated Dependency Synchronization\n\n`;
     md += `SyncMyDep detected desynchronization or security vulnerabilities in your project's dependencies and generated this Pull Request.\n\n`;
@@ -36421,9 +36766,36 @@ function buildMarkdownSummary({ pm, yarnVariant, workspaceInfo, changedFiles, di
     }
     md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
     md += `- **Security Audit Fix**: ${fixedAudit ? '✅ Applied' : '⏭️ Skipped'}\n`;
+    if (lockfileVerified !== undefined) {
+        md += `- **Lockfile Integrity Verification**: ${lockfileVerified ? '✅ Passed (dry-run installation verified)' : '⚠️ Warning (dry-run inspection failed)'}\n`;
+    }
+    if (buildResult) {
+        md += `- **Build Smoke Test**: ${buildResult.success ? `✅ Passed (\`${buildResult.command}\`)` : `⚠️ Failed (\`${buildResult.command}\`)`}\n`;
+    }
     md += `- **Modified Files**: ${changedFiles.length} file(s)\n\n`;
     if (dependencyDiffs && dependencyDiffs.length > 0) {
         md += buildDependencyDiffTable(dependencyDiffs);
+    }
+    if (auditBefore && auditBefore.advisories && auditBefore.advisories.length > 0) {
+        md += buildAdvisoryTable(auditBefore.advisories, fixedAudit);
+    }
+    else if (auditBefore && auditBefore.total > 0) {
+        md += `### 🛡️ Vulnerability Audit\n\n`;
+        md += `- **Initial Vulnerabilities Detected**: ${auditBefore.total}\n`;
+        if (auditAfter) {
+            md += `- **Remaining Vulnerabilities After Fix**: ${auditAfter.total}\n`;
+        }
+        if (auditBefore.summary) {
+            md += `\n<details>\n<summary>View vulnerability breakdown</summary>\n\n`;
+            md += `\`\`\`json\n${JSON.stringify(auditBefore.summary, null, 2)}\n\`\`\`\n`;
+            md += `</details>\n\n`;
+        }
+    }
+    if (buildResult && !buildResult.success && buildResult.output) {
+        md += `### ⚠️ Build Smoke Test Logs\n\n`;
+        md += `<details>\n<summary>Click to view build error logs</summary>\n\n`;
+        md += `\`\`\`text\n${buildResult.output.slice(0, 3000)}\n\`\`\`\n`;
+        md += `</details>\n\n`;
     }
     md += `### 📁 Modified Dependency Files\n\n`;
     md += `| File | Status |\n`;
@@ -36436,29 +36808,17 @@ function buildMarkdownSummary({ pm, yarnVariant, workspaceInfo, changedFiles, di
         md += `### 📊 Diff Summary\n\n`;
         md += `\`\`\`text\n${diffStat}\n\`\`\`\n\n`;
     }
-    if (auditBefore && auditBefore.total > 0) {
-        md += `### 🛡️ Vulnerability Audit\n\n`;
-        md += `- **Initial Vulnerabilities Detected**: ${auditBefore.total}\n`;
-        if (auditAfter) {
-            md += `- **Remaining Vulnerabilities After Fix**: ${auditAfter.total}\n`;
-        }
-        if (auditBefore.summary) {
-            md += `\n<details>\n<summary>View vulnerability breakdown</summary>\n\n`;
-            md += `\`\`\`json\n${JSON.stringify(auditBefore.summary, null, 2)}\n\`\`\`\n`;
-            md += `</details>\n\n`;
-        }
-    }
     md += `### 🔍 Maintainer Checklist\n\n`;
     md += `- [ ] Verify automated CI test results pass.\n`;
-    md += `- [ ] Review any package version changes in \`package.json\` / lockfiles.\n`;
-    md += `- [ ] Merge this PR to ensure your repository dependencies stay synchronized and secure.\n\n`;
+    md += `- [ ] Review package version changes in \`package.json\` / lockfiles.\n`;
+    md += `- [ ] Merge this PR to keep repository dependencies synchronized and secure.\n\n`;
     md += `---\n*Generated automatically by [SyncMyDep GitHub Action](https://github.com/nivinvysakh/syncmydep).*`;
     return md;
 }
 /**
  * Builds a clean, focused Markdown comment when SyncMyDep updates an existing PR via comment trigger.
  */
-function buildCommentSummary({ pm, yarnVariant, workspaceInfo, changedFiles, diffStat, dependencyDiffs = [], syncedLockfile, fixedAudit, auditBefore, auditAfter, branch, commenter }) {
+function buildCommentSummary({ pm, yarnVariant, workspaceInfo, changedFiles, diffStat, dependencyDiffs = [], syncedLockfile, fixedAudit, auditBefore, auditAfter, lockfileVerified, buildResult, branch, commenter }) {
     const pmDisplay = pm === 'yarn' && yarnVariant === 'berry' ? 'yarn (berry)' : pm;
     let md = `### 🚀 SyncMyDep: Dependencies Synchronized on \`${branch}\`\n\n`;
     if (commenter) {
@@ -36471,9 +36831,25 @@ function buildCommentSummary({ pm, yarnVariant, workspaceInfo, changedFiles, dif
     }
     md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
     md += `- **Security Audit Fix**: ${fixedAudit ? '✅ Applied' : '⏭️ Skipped'}\n`;
+    if (lockfileVerified !== undefined) {
+        md += `- **Lockfile Integrity**: ${lockfileVerified ? '✅ Passed' : '⚠️ Warning'}\n`;
+    }
+    if (buildResult) {
+        md += `- **Build Smoke Test**: ${buildResult.success ? `✅ Passed` : `⚠️ Failed`}\n`;
+    }
     md += `- **Files Updated**: ${changedFiles.length} file(s)\n\n`;
     if (dependencyDiffs && dependencyDiffs.length > 0) {
         md += buildDependencyDiffTable(dependencyDiffs);
+    }
+    if (auditBefore && auditBefore.advisories && auditBefore.advisories.length > 0) {
+        md += buildAdvisoryTable(auditBefore.advisories, fixedAudit);
+    }
+    else if (auditBefore && auditBefore.total > 0) {
+        md += `#### 🛡️ Vulnerability Audit\n`;
+        md += `- **Initial Vulnerabilities**: ${auditBefore.total}\n`;
+        if (auditAfter) {
+            md += `- **Remaining Vulnerabilities**: ${auditAfter.total}\n`;
+        }
     }
     md += `#### 📁 Modified Dependency Files\n`;
     md += `| File | Status |\n`;
@@ -36486,18 +36862,6 @@ function buildCommentSummary({ pm, yarnVariant, workspaceInfo, changedFiles, dif
         md += `#### 📊 Diff Summary\n`;
         md += `\`\`\`text\n${diffStat}\n\`\`\`\n\n`;
     }
-    if (auditBefore && auditBefore.total > 0) {
-        md += `#### 🛡️ Vulnerability Audit\n`;
-        md += `- **Initial Vulnerabilities**: ${auditBefore.total}\n`;
-        if (auditAfter) {
-            md += `- **Remaining Vulnerabilities**: ${auditAfter.total}\n`;
-        }
-        if (auditBefore.summary) {
-            md += `\n<details>\n<summary>View vulnerability breakdown</summary>\n\n`;
-            md += `\`\`\`json\n${JSON.stringify(auditBefore.summary, null, 2)}\n\`\`\`\n`;
-            md += `</details>\n\n`;
-        }
-    }
     md += `---\n*Pushed directly to \`${branch}\` by [SyncMyDep](https://github.com/nivinvysakh/syncmydep).*`;
     return md;
 }
@@ -36506,17 +36870,33 @@ function buildCommentSummary({ pm, yarnVariant, workspaceInfo, changedFiles, dif
  */
 function buildDependencyDiffTable(diffs) {
     let md = `### 🔄 Package Version Changes\n\n`;
-    md += `| Package | Old Version | New Version | Change |\n`;
+    md += `| Package | Old Version | New Version | Reason / Type |\n`;
     md += `| :--- | :--- | :--- | :--- |\n`;
     for (const diff of diffs) {
         const oldV = diff.oldVersion ? `\`${diff.oldVersion}\`` : '—';
         const newV = diff.newVersion ? `\`${diff.newVersion}\`` : '—';
-        let statusIcon = '🔄 Updated';
+        let statusText = diff.reason || 'Direct Update';
         if (diff.changeType === 'added')
-            statusIcon = '✨ Added';
+            statusText = '✨ Added';
         if (diff.changeType === 'removed')
-            statusIcon = '🗑️ Removed';
-        md += `| \`${diff.name}\` | ${oldV} | ${newV} | ${statusIcon} |\n`;
+            statusText = '🗑️ Removed';
+        md += `| \`${diff.name}\` | ${oldV} | ${newV} | ${statusText} |\n`;
+    }
+    md += `\n`;
+    return md;
+}
+/**
+ * Generates a markdown disclosure table for detected security advisories.
+ */
+function buildAdvisoryTable(advisories, fixed) {
+    let md = `### 🛡️ Vulnerability & Security Advisory Disclosure\n\n`;
+    md += `The following security advisories were identified${fixed ? ' and patched' : ''}:\n\n`;
+    md += `| Severity | Advisory / CVE | Package | Patched In | Title |\n`;
+    md += `| :--- | :--- | :--- | :--- | :--- |\n`;
+    for (const adv of advisories) {
+        const idLink = adv.url ? `[${adv.id}](${adv.url})` : adv.id;
+        const patched = adv.patchedVersions ? `\`${adv.patchedVersions}\`` : '—';
+        md += `| ${formatSeverity(adv.severity)} | ${idLink} | \`${adv.package}\` | ${patched} | ${adv.title} |\n`;
     }
     md += `\n`;
     return md;
@@ -36593,7 +36973,7 @@ async function recreateFreshBranch(workspaceDir, baseBranch, targetBranch) {
  * and updates or notifies the PR.
  */
 async function rebaseAndRedoProcess(options) {
-    const { workspaceDir, octokit, owner, repo, baseBranch, targetBranch, prNumber, triggerCommentId, commentId, commenter, pm, yarnVariant, workspaceInfo, syncLockfileOption, fixAuditOption, auditLevel, commitMessage, prTitle, labels = [], assignees = [], reviewers = [], } = options;
+    const { workspaceDir, octokit, owner, repo, baseBranch, targetBranch, prNumber, triggerCommentId, commentId, commenter, pm, yarnVariant, workspaceInfo, syncLockfileOption, fixAuditOption, auditLevel, commitMessage, prTitle, labels = [], assignees = [], reviewers = [], verifyLockfile = true, runBuild, failOnBuildError = false, autoMerge = false, autoMergeMethod = 'squash', } = options;
     const userTriggerCommentId = triggerCommentId || commentId;
     let botCommentId;
     if (prNumber) {
@@ -36631,7 +37011,25 @@ async function rebaseAndRedoProcess(options) {
         fixedAudit = auditResult.success;
         auditAfter = await inspectAudit(workspaceDir, pm);
     }
-    // 5. Check git changes
+    // 5. Lockfile integrity verification
+    let lockfileVerified = undefined;
+    if (verifyLockfile) {
+        const integrityResult = await verifyLockfileIntegrity(workspaceDir, pm, yarnVariant);
+        lockfileVerified = integrityResult.success;
+    }
+    // 6. Build smoke test
+    let buildResult = null;
+    if (runBuild) {
+        buildResult = await runBuildSmokeTest(workspaceDir, runBuild);
+        if (!buildResult.success && failOnBuildError) {
+            lib_core.error(`[SyncMyDep] Build smoke test failed: ${buildResult.output}`);
+            if (botCommentId) {
+                await updateIssueComment(octokit, owner, repo, botCommentId, `❌ **SyncMyDep Rebase Aborted**: Build smoke test (\`${runBuild}\`) failed with errors.`);
+            }
+            return { hasChanges: true, pushed: false, prNumber };
+        }
+    }
+    // 7. Check git changes
     const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
     if (!hasChanges) {
         lib_core.info(`[SyncMyDep] No changes detected after rebase on branch ${targetBranch}.`);
@@ -36648,7 +37046,7 @@ async function rebaseAndRedoProcess(options) {
         }
         return { hasChanges: false, pushed: false, prNumber };
     }
-    // 6. Stage, commit and force push
+    // 8. Stage, commit and force push
     const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
     const dependencyDiffs = await parseDependencyDiffs(workspaceDir, changedFiles);
     const committedAndPushed = await commitAndPushChanges({
@@ -36662,7 +37060,7 @@ async function rebaseAndRedoProcess(options) {
         lib_core.warning(`[SyncMyDep] Failed to commit or push rebased branch ${targetBranch}.`);
         return { hasChanges: true, pushed: false, prNumber };
     }
-    // 7. PR Comment or PR Create/Update
+    // 9. PR Comment or PR Create/Update
     if (prNumber) {
         const commentMarkdown = buildCommentSummary({
             pm,
@@ -36675,6 +37073,8 @@ async function rebaseAndRedoProcess(options) {
             fixedAudit,
             auditBefore,
             auditAfter,
+            lockfileVerified,
+            buildResult,
             branch: targetBranch,
             commenter,
         });
@@ -36700,6 +37100,8 @@ async function rebaseAndRedoProcess(options) {
         fixedAudit,
         auditBefore,
         auditAfter,
+        lockfileVerified,
+        buildResult,
     });
     const prResult = await createOrUpdatePullRequest({
         octokit,
@@ -36712,6 +37114,8 @@ async function rebaseAndRedoProcess(options) {
         labels,
         assignees,
         reviewers,
+        autoMerge,
+        autoMergeMethod,
     });
     return { hasChanges: true, pushed: true, prNumber: prResult.number };
 }
@@ -36761,6 +37165,17 @@ async function run() {
         const requireOwner = lib_core.getInput('require-owner') !== ''
             ? lib_core.getBooleanInput('require-owner')
             : fileConfig.requireOwner ?? true;
+        const verifyLockfileOption = lib_core.getInput('verify-lockfile') !== ''
+            ? lib_core.getBooleanInput('verify-lockfile')
+            : fileConfig.verifyLockfile ?? true;
+        const runBuild = lib_core.getInput('run-build') || fileConfig.runBuild || '';
+        const failOnBuildError = lib_core.getInput('fail-on-build-error') !== ''
+            ? lib_core.getBooleanInput('fail-on-build-error')
+            : fileConfig.failOnBuildError ?? false;
+        const autoMergeOption = lib_core.getInput('auto-merge') !== ''
+            ? lib_core.getBooleanInput('auto-merge')
+            : fileConfig.autoMerge ?? false;
+        const autoMergeMethod = (lib_core.getInput('auto-merge-method') || fileConfig.autoMergeMethod || 'squash').toLowerCase();
         const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
         const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
         const reviewers = reviewersInput ? reviewersInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
@@ -36839,7 +37254,12 @@ async function run() {
                     prTitle,
                     labels,
                     assignees,
-                    reviewers
+                    reviewers,
+                    verifyLockfile: verifyLockfileOption,
+                    runBuild,
+                    failOnBuildError,
+                    autoMerge: autoMergeOption,
+                    autoMergeMethod
                 });
                 return;
             }
@@ -36944,6 +37364,21 @@ async function run() {
             fixedAudit = auditResult.success;
             auditAfter = await inspectAudit(workspaceDir, pm);
         }
+        // Lockfile integrity verification
+        let lockfileVerified = undefined;
+        if (verifyLockfileOption) {
+            const integrityResult = await verifyLockfileIntegrity(workspaceDir, pm, yarnVariant);
+            lockfileVerified = integrityResult.success;
+        }
+        // Build smoke test
+        let buildResult = null;
+        if (runBuild && !checkOnly) {
+            buildResult = await runBuildSmokeTest(workspaceDir, runBuild);
+            if (!buildResult.success && failOnBuildError) {
+                lib_core.setFailed(`[SyncMyDep] Build smoke test failed: ${buildResult.output}`);
+                return;
+            }
+        }
         const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
         // 6. Check-Only / CI Gating Mode
         if (checkOnly) {
@@ -36999,7 +37434,9 @@ async function run() {
             syncedLockfile,
             fixedAudit,
             auditBefore,
-            auditAfter
+            auditAfter,
+            lockfileVerified,
+            buildResult
         });
         if (!token) {
             lib_core.warning('[SyncMyDep] No github-token provided. Cannot push branch or create PR automatically.');
@@ -37064,7 +37501,9 @@ async function run() {
             body: prBody,
             labels,
             assignees,
-            reviewers
+            reviewers,
+            autoMerge: autoMergeOption,
+            autoMergeMethod
         });
         lib_core.setOutput('pull-request-number', String(prResult.number));
         lib_core.setOutput('pull-request-url', prResult.url);

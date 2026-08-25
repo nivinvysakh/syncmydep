@@ -104,6 +104,11 @@ function normalizeConfig(raw: Record<string, unknown>): SyncMyDepConfig {
     prAssignees: normalizeList(assignees),
     prReviewers: normalizeList(reviewers),
     commentTrigger: getVal<string>('commentTrigger', 'comment-trigger', 'comment_trigger'),
-    requireOwner: getVal<boolean>('requireOwner', 'require-owner', 'require_owner')
+    requireOwner: getVal<boolean>('requireOwner', 'require-owner', 'require_owner'),
+    verifyLockfile: getVal<boolean>('verifyLockfile', 'verify-lockfile', 'verify_lockfile'),
+    runBuild: getVal<string>('runBuild', 'run-build', 'run_build', 'buildScript', 'build-script', 'build_script'),
+    failOnBuildError: getVal<boolean>('failOnBuildError', 'fail-on-build-error', 'fail_on_build_error'),
+    autoMerge: getVal<boolean>('autoMerge', 'auto-merge', 'auto_merge'),
+    autoMergeMethod: getVal<'squash' | 'merge' | 'rebase'>('autoMergeMethod', 'auto-merge-method', 'auto_merge_method')
   };
 }

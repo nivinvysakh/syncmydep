@@ -4,6 +4,7 @@ import {
   addCommentReaction,
   postIssueComment,
   closePullRequest,
+  enablePullRequestAutoMerge,
   configureGitUser,
 } from "../src/git-pr";
 import { OctokitClient } from "../src/types";
@@ -126,5 +127,23 @@ describe("git-pr helpers", () => {
       pull_number: 42,
       state: "closed",
     });
+  });
+
+  test("enablePullRequestAutoMerge executes GraphQL mutation", async () => {
+    const mockGraphql = jest.fn().mockResolvedValue({ data: {} });
+    const octokit = {
+      graphql: mockGraphql,
+    } as unknown as OctokitClient;
+
+    const result = await enablePullRequestAutoMerge(octokit, "PR_node_123", "squash");
+
+    expect(result).toBe(true);
+    expect(mockGraphql).toHaveBeenCalledWith(
+      expect.stringContaining("enablePullRequestAutoMerge"),
+      expect.objectContaining({
+        pullRequestId: "PR_node_123",
+        mergeMethod: "SQUASH",
+      }),
+    );
   });
 });
