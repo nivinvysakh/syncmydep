@@ -1,14 +1,17 @@
-name: Sync Dependencies & Check Lockfile
+name: Sync Dependencies & Fix Vulnerabilities
 
 on:
   schedule:
-    # Run every Monday at 08:00 UTC
+    # Run weekly on Monday at 08:00 UTC
     - cron: "0 8 * * 1"
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual one-click trigger
   push:
     paths:
       - "package.json"
       - ".syncmydep.yml"
+      - "pnpm-workspace.yaml"
+      - "bun.lock"
+      - "deno.json"
     branches:
       - main
 
@@ -19,7 +22,7 @@ permissions:
 
 jobs:
   sync-dependencies:
-    name: Check & Fix Dependencies
+    name: Sync Dependencies & Open PR
     runs-on: ubuntu-latest
 
     steps:
@@ -28,27 +31,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Run SyncMyDep
+        uses: nivinvysakh/syncmydep@v1
         with:
-          node-version: 20
-          cache: "npm"
-
-      - name: Run SyncMyDep Action
-        id: syncmydep
-        uses: nivinvysakh/syncmydep@main
-        with:
-          github-token: ${{ secrets.SYNCMYDEP_BOT_TOKEN || secrets.GITHUB_TOKEN }}
-          package-manager: "auto"
-          sync-lockfile: "true"
-          fix-audit: "true"
-          audit-level: "moderate"
-          pr-branch: "syncmydep/dependency-fix"
-          pr-title: "chore(deps): synchronize package.json and lockfile"
-          commit-message: "chore(deps): synchronize package.json and lockfile"
-          pr-labels: "dependencies, automated-pr"
-
-      - name: Log Action Output
-        if: steps.syncmydep.outputs.changes-detected == 'true'
-        run: |
-          echo "Pull Request opened: ${{ steps.syncmydep.outputs.pull-request-url }}"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Optional settings (can also be defined in .syncmydep.yml):
+          # sync-lockfile: "true"
+          # fix-audit: "true"
+          # verify-lockfile: "true"
+          # auto-merge: "false"

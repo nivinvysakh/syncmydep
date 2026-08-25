@@ -20,15 +20,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
       - name: Run SyncMyDep
-        uses: ./
+        uses: nivinvysakh/syncmydep@v1
         with:
-          github-token: ${{ secrets.SYNCMYDEP_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-trigger: "syncdep"
           require-owner: "true"
           sync-lockfile: "true"

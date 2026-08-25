@@ -35,15 +35,17 @@
 
 ## 🚀 Workflows
 
-### 1. Scheduled / Push Synchronization (`.github/workflows/syncmydep.yml`)
+### 1. Automated Dependency Sync & PR (`.github/workflows/syncmydep.yml`)
+
+Runs on schedule or push to automatically synchronize lockfiles, patch vulnerabilities, run safety checks, and open/update Pull Requests:
 
 ```yaml
-name: Dependency Sync & Audit
+name: Sync Dependencies & Fix Vulnerabilities
 
 on:
   schedule:
-    - cron: "0 8 * * 1" # Runs every Monday at 08:00 UTC
-  workflow_dispatch: # Allows manual trigger from GitHub UI
+    - cron: "0 8 * * 1" # Runs weekly every Monday at 08:00 UTC
+  workflow_dispatch: # Allows manual one-click trigger
   push:
     paths:
       - "package.json"
@@ -61,6 +63,7 @@ permissions:
 
 jobs:
   sync:
+    name: Sync Dependencies & Open PR
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -68,25 +71,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
       - name: Run SyncMyDep
         uses: nivinvysakh/syncmydep@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          # All settings can be defined in .syncmydep.yml or overridden below:
-          sync-lockfile: "true"
-          fix-audit: "true"
+          # Optional settings (also configurable via .syncmydep.yml):
+          # verify-lockfile: "true"
+          # run-build: "npm run build"
+          # auto-merge: "true"
 ```
 
 ---
 
 ### 2. On-Demand PR Comment Trigger (`.github/workflows/syncmydep-comment.yml`)
 
-Trigger dependency synchronization on any open Pull Request simply by commenting **`syncdep`** or **`/syncdep`**!
+Comment on any open Pull Request to interact with SyncMyDep:
+- **`syncdep`**: Instantly synchronizes and updates the PR branch in place.
+- **`syncdep rebase`**: Recreates the branch fresh from upstream `main`, re-syncs, and force-pushes.
+- **`syncdep close`**: Closes the PR and deletes the remote branch.
 
 ```yaml
 name: SyncMyDep on PR Comment
@@ -104,17 +106,11 @@ jobs:
   sync-pr-comment:
     name: Sync Dependencies on PR Comment
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
 
       - name: Run SyncMyDep
         uses: nivinvysakh/syncmydep@v1
@@ -122,15 +118,13 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-trigger: "syncdep"
           require-owner: "true"
-          sync-lockfile: "true"
-          fix-audit: "true"
 ```
 
 ---
 
 ### 3. CI Gating / Check-Only Linter Mode
 
-Use SyncMyDep strictly as a fast CI linter on pull requests to ensure contributors didn't forget to update lockfiles:
+Use SyncMyDep strictly as a fast CI gating check on pull requests to ensure contributors never commit desynchronized lockfiles or unpatched vulnerabilities:
 
 ```yaml
 name: CI Lockfile Verification
@@ -145,9 +139,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
       - uses: nivinvysakh/syncmydep@v1
         with:
           check-only: "true"
