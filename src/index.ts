@@ -48,7 +48,7 @@ async function run(): Promise<void> {
     const fileConfig = loadConfigFile(workspaceDir, customConfigPath);
 
     // 2. Resolve Action inputs (Action input > file config > default)
-    const token = core.getInput('github-token') || process.env.GITHUB_TOKEN;
+    const token = core.getInput('github-token') || process.env.GH_PAT || process.env.GITHUB_TOKEN;
     const pmInput = core.getInput('package-manager') || fileConfig.packageManager || 'auto';
     const syncLockfileOption = core.getInput('sync-lockfile') !== ''
       ? core.getBooleanInput('sync-lockfile')

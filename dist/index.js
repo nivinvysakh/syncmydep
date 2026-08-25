@@ -163329,7 +163329,7 @@ async function run() {
         // 1. Load .syncmydeprc.json if present
         const fileConfig = loadConfigFile(workspaceDir, customConfigPath);
         // 2. Resolve Action inputs (Action input > file config > default)
-        const token = lib_core.getInput('github-token') || process.env.GITHUB_TOKEN;
+        const token = lib_core.getInput('github-token') || process.env.GH_PAT || process.env.GITHUB_TOKEN;
         const pmInput = lib_core.getInput('package-manager') || fileConfig.packageManager || 'auto';
         const syncLockfileOption = lib_core.getInput('sync-lockfile') !== ''
             ? lib_core.getBooleanInput('sync-lockfile')
