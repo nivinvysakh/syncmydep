@@ -31903,7 +31903,7 @@ async function runCli() {
         const dedupeRes = await runDedupe(workspaceDir, pm, yarnVariant);
         dedupeLog = dedupeRes?.output ?? '';
     }
-    const integrity = await verifyLockfileIntegrity(workspaceDir, pm);
+    const integrity = await verifyLockfileIntegrity(workspaceDir, pm, yarnVariant);
     if (integrity.success) {
         console.log(`✅ Lockfile:        Integrity verified`);
     }
