@@ -90,7 +90,7 @@ describe('monorepo workflows & lockfile synchronization', () => {
     expect(result.success).toBe(true);
     expect(exec.exec).toHaveBeenCalledWith(
       'pnpm',
-      ['install', '--lockfile-only', '--no-frozen-lockfile'],
+      ['install', '--lockfile-only', '--no-frozen-lockfile', '--config.confirmModulesPurge=false'],
       expect.any(Object)
     );
   });

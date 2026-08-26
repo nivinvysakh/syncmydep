@@ -103,8 +103,9 @@ ${cleanLogOutput(data.integrityLog)}
 }
 
 export async function runCli(): Promise<void> {
-  // Ensure sub-commands don't dump hundreds of lines of noise into stdout
+  // Ensure sub-commands don't dump hundreds of lines of noise into stdout and run in non-interactive CI mode
   process.env.SYNCMYDEP_SILENT = 'true';
+  process.env.CI = 'true';
 
   const workingDir = process.env.INPUT_WORKING_DIRECTORY || process.cwd();
   const workspaceDir = path.resolve(process.cwd(), workingDir);

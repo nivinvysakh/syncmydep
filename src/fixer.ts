@@ -36,7 +36,7 @@ export async function syncLockfile(
 
     case 'pnpm':
       command = 'pnpm';
-      args = ['install', '--lockfile-only', '--no-frozen-lockfile'];
+      args = ['install', '--lockfile-only', '--no-frozen-lockfile', '--config.confirmModulesPurge=false'];
       break;
 
     case 'yarn':
@@ -514,7 +514,7 @@ export async function verifyLockfileIntegrity(
   switch (pm) {
     case 'pnpm':
       command = 'pnpm';
-      args = ['install', '--frozen-lockfile', '--prefer-offline'];
+      args = ['install', '--frozen-lockfile', '--prefer-offline', '--config.confirmModulesPurge=false'];
       break;
 
     case 'yarn':

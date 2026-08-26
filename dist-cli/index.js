@@ -27927,7 +27927,7 @@ async function syncLockfile(workspaceDir, pm, yarnVariant = 'classic') {
             break;
         case 'pnpm':
             command = 'pnpm';
-            args = ['install', '--lockfile-only', '--no-frozen-lockfile'];
+            args = ['install', '--lockfile-only', '--no-frozen-lockfile', '--config.confirmModulesPurge=false'];
             break;
         case 'yarn':
             command = 'yarn';
@@ -28336,7 +28336,7 @@ async function verifyLockfileIntegrity(workspaceDir, pm, yarnVariant = 'classic'
     switch (pm) {
         case 'pnpm':
             command = 'pnpm';
-            args = ['install', '--frozen-lockfile', '--prefer-offline'];
+            args = ['install', '--frozen-lockfile', '--prefer-offline', '--config.confirmModulesPurge=false'];
             break;
         case 'yarn':
             command = 'yarn';
@@ -31830,8 +31830,9 @@ ${cleanLogOutput(data.integrityLog)}
 `;
 }
 async function runCli() {
-    // Ensure sub-commands don't dump hundreds of lines of noise into stdout
+    // Ensure sub-commands don't dump hundreds of lines of noise into stdout and run in non-interactive CI mode
     process.env.SYNCMYDEP_SILENT = 'true';
+    process.env.CI = 'true';
     const workingDir = process.env.INPUT_WORKING_DIRECTORY || process.cwd();
     const workspaceDir = external_path_.resolve(process.cwd(), workingDir);
     const fileConfig = loadConfigFile(workspaceDir);

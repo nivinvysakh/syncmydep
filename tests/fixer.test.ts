@@ -85,7 +85,7 @@ describe('fixer', () => {
 
     const pnpmResult = await verifyLockfileIntegrity('/fake/dir', 'pnpm');
     expect(pnpmResult.success).toBe(true);
-    expect(exec.exec).toHaveBeenCalledWith('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], expect.any(Object));
+    expect(exec.exec).toHaveBeenCalledWith('pnpm', ['install', '--frozen-lockfile', '--prefer-offline', '--config.confirmModulesPurge=false'], expect.any(Object));
 
     const bunResult = await verifyLockfileIntegrity('/fake/dir', 'bun');
     expect(bunResult.success).toBe(true);

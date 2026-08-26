@@ -20,8 +20,9 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 RUN curl -fsSL https://bun.sh/install | bash
 RUN curl -fsSL https://deno.land/install.sh | sh
 
-# Configure environment PATH for bun and deno
-ENV PATH="/root/.bun/bin:/root/.deno/bin:${PATH}"
+# Configure environment PATH for bun and deno, and set CI=true
+ENV PATH="/root/.bun/bin:/root/.deno/bin:${PATH}" \
+    CI="true"
 
 # Set default working directory for mounted repositories
 WORKDIR /workspace

@@ -94497,7 +94497,7 @@ async function syncLockfile(workspaceDir, pm, yarnVariant = 'classic') {
             break;
         case 'pnpm':
             command = 'pnpm';
-            args = ['install', '--lockfile-only', '--no-frozen-lockfile'];
+            args = ['install', '--lockfile-only', '--no-frozen-lockfile', '--config.confirmModulesPurge=false'];
             break;
         case 'yarn':
             command = 'yarn';
@@ -94906,7 +94906,7 @@ async function verifyLockfileIntegrity(workspaceDir, pm, yarnVariant = 'classic'
     switch (pm) {
         case 'pnpm':
             command = 'pnpm';
-            args = ['install', '--frozen-lockfile', '--prefer-offline'];
+            args = ['install', '--frozen-lockfile', '--prefer-offline', '--config.confirmModulesPurge=false'];
             break;
         case 'yarn':
             command = 'yarn';
