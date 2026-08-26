@@ -107,4 +107,31 @@ describe('monorepo workflows & lockfile synchronization', () => {
     expect(result.success).toBe(true);
     expect(exec.exec).toHaveBeenCalledWith('npm', ['dedupe'], expect.any(Object));
   });
+
+  test('handles EBADPLATFORM cross-platform fallback in Turborepo / Next.js monorepos', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'package.json'),
+      JSON.stringify({ name: 'turborepo-app', workspaces: ['apps/*'] })
+    );
+
+    // Mock initial attempt failing with EBADPLATFORM in output
+    (exec.exec as jest.Mock)
+      .mockImplementationOnce(async (_cmd, _args, opts) => {
+        if (opts && opts.listeners && opts.listeners.stderr) {
+          opts.listeners.stderr(Buffer.from('npm error code EBADPLATFORM\nUnsupported platform for @next/swc-darwin-arm64'));
+        }
+        return 1;
+      })
+      .mockResolvedValueOnce(0);
+
+    const result = await syncLockfile(tmpDir, 'npm');
+
+    expect(result.success).toBe(true);
+    expect(exec.exec).toHaveBeenNthCalledWith(
+      2,
+      'npm',
+      ['install', '--package-lock-only', '--no-audit', '--no-fund', '--force'],
+      expect.any(Object)
+    );
+  });
 });

@@ -74,11 +74,19 @@ export async function syncLockfile(
   const exitCode = await exec.exec(command, args, options);
   const lockfilePath = path.join(workspaceDir, 'package-lock.json');
 
-  // Fallback for npm (e.g. monorepo workspaces where initial package-lock.json does not yet exist)
+  // Fallback for npm (e.g. monorepo workspaces or cross-platform packages with EBADPLATFORM)
   if (pm === 'npm' && (exitCode !== 0 || !fs.existsSync(lockfilePath))) {
-    core.info('[SyncMyDep] Retrying npm synchronization with npm install --ignore-scripts --no-audit --no-fund...');
+    const isBadPlatform = output.includes('EBADPLATFORM');
+    const fallbackArgs = isBadPlatform
+      ? ['install', '--package-lock-only', '--no-audit', '--no-fund', '--force']
+      : ['install', '--ignore-scripts', '--no-audit', '--no-fund'];
+    core.info(`[SyncMyDep] Retrying npm synchronization with npm ${fallbackArgs.join(' ')}...`);
     output = '';
-    const retryCode = await exec.exec('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund'], options);
+    let retryCode = await exec.exec('npm', fallbackArgs, options);
+    if (retryCode !== 0 && !isBadPlatform) {
+      core.info('[SyncMyDep] Retrying npm synchronization with npm install --ignore-scripts --no-audit --no-fund --force...');
+      retryCode = await exec.exec('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--force'], options);
+    }
     return {
       success: retryCode === 0,
       output
@@ -167,6 +175,16 @@ export async function runAuditFix(
   };
 
   const exitCode = await exec.exec(command, args, options);
+
+  if (exitCode !== 0 && pm === 'npm' && (output.includes('EBADPLATFORM') || output.includes('ENOLOCK'))) {
+    core.info(`[SyncMyDep] Retrying npm audit fix with --force...`);
+    output = '';
+    const retryCode = await exec.exec('npm', ['audit', 'fix', `--audit-level=${auditLevel}`, '--force'], options);
+    return {
+      success: retryCode === 0,
+      output
+    };
+  }
 
   return {
     success: exitCode === 0,
