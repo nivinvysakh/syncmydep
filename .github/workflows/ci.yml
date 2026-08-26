@@ -7,8 +7,11 @@ on:
     branches: [main, Beta]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   test-and-build:
@@ -52,3 +55,4 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           git diff --ignore-space-at-eol --exit-code dist/ || (echo "Error: dist/ is out of date. Please run 'npm run build' and commit changes." && git diff dist/ && exit 1)
+          git diff --ignore-space-at-eol --exit-code dist/ dist-cli/ || (echo "Error: dist/ or dist-cli/ is out of date. Please run 'npm run build' and commit changes." && git diff dist/ dist-cli/ && exit 1)
