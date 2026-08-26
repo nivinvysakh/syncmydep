@@ -316,4 +316,121 @@ describe("git-pr helpers", () => {
       }),
     );
   });
+
+  test("createOrUpdatePullRequest applies custom title, labels, assignees, and reviewers", async () => {
+    const mockList = jest.fn().mockResolvedValue({ data: [] });
+    const mockCreate = jest.fn().mockResolvedValue({
+      data: {
+        number: 77,
+        html_url: "https://github.com/owner/repo/pull/77",
+        node_id: "PR_77",
+      },
+    });
+    const mockAddLabels = jest.fn().mockResolvedValue({});
+    const mockAddAssignees = jest.fn().mockResolvedValue({});
+    const mockRequestReviewers = jest.fn().mockResolvedValue({});
+
+    const octokit = {
+      rest: {
+        pulls: {
+          list: mockList,
+          create: mockCreate,
+          requestReviewers: mockRequestReviewers,
+        },
+        issues: {
+          addLabels: mockAddLabels,
+          addAssignees: mockAddAssignees,
+        },
+      },
+    } as unknown as OctokitClient;
+
+    const result = await createOrUpdatePullRequest({
+      octokit,
+      owner: "owner",
+      repo: "repo",
+      baseBranch: "main",
+      headBranch: "syncmydep/dependency-fix",
+      title: "chore(deps): synchronize lockfiles & resolve security vulnerabilities",
+      body: "Custom PR Body with Header and Footer",
+      labels: ["dependencies", "automated-pr", "SyncMyDep"],
+      assignees: ["nivinvysakh"],
+      reviewers: ["reviewer1"],
+    });
+
+    expect(result.number).toBe(77);
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "chore(deps): synchronize lockfiles & resolve security vulnerabilities",
+        body: "Custom PR Body with Header and Footer",
+      }),
+    );
+    expect(mockAddLabels).toHaveBeenCalledWith({
+      owner: "owner",
+      repo: "repo",
+      issue_number: 77,
+      labels: ["dependencies", "automated-pr", "SyncMyDep"],
+    });
+    expect(mockAddAssignees).toHaveBeenCalledWith({
+      owner: "owner",
+      repo: "repo",
+      issue_number: 77,
+      assignees: ["nivinvysakh"],
+    });
+    expect(mockRequestReviewers).toHaveBeenCalledWith({
+      owner: "owner",
+      repo: "repo",
+      pull_number: 77,
+      reviewers: ["reviewer1"],
+    });
+  });
+
+  test("createOrUpdatePullRequest automatically creates missing labels if bulk add fails", async () => {
+    const mockList = jest.fn().mockResolvedValue({ data: [] });
+    const mockCreate = jest.fn().mockResolvedValue({
+      data: {
+        number: 88,
+        html_url: "https://github.com/owner/repo/pull/88",
+        node_id: "PR_88",
+      },
+    });
+    const mockCreateLabel = jest.fn().mockResolvedValue({});
+    const mockAddLabels = jest
+      .fn()
+      .mockRejectedValueOnce(new Error("Resource not found"))
+      .mockResolvedValue({});
+
+    const octokit = {
+      rest: {
+        pulls: {
+          list: mockList,
+          create: mockCreate,
+        },
+        issues: {
+          addLabels: mockAddLabels,
+          createLabel: mockCreateLabel,
+        },
+      },
+    } as unknown as OctokitClient;
+
+    const result = await createOrUpdatePullRequest({
+      octokit,
+      owner: "owner",
+      repo: "repo",
+      baseBranch: "main",
+      headBranch: "syncmydep/dependency-fix",
+      title: "chore: update deps",
+      body: "body",
+      labels: ["SyncMyDep"],
+    });
+
+    expect(result.number).toBe(88);
+    expect(mockCreateLabel).toHaveBeenCalledWith({
+      owner: "owner",
+      repo: "repo",
+      name: "SyncMyDep",
+      color: "6f42c1",
+      description: "Applied by SyncMyDep",
+    });
+    expect(mockAddLabels).toHaveBeenCalledTimes(2);
+  });
 });
