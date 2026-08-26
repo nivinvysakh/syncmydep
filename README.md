@@ -4,11 +4,12 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/nivinvysakh/syncmydep/blob/main/LICENSE)
 [![GitHub Release](https://img.shields.io/github/v/release/nivinvysakh/syncmydep?color=purple&label=latest%20release)](https://github.com/nivinvysakh/syncmydep/releases/latest)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
+[![Docker Image](https://img.shields.io/badge/Docker-GHCR-blue?logo=docker)](https://github.com/nivinvysakh/syncmydep/pkgs/container/syncmydep)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 [![Automated Dependency Sync](https://img.shields.io/badge/SyncMyDep-Action-purple.svg)](https://github.com/nivinvysakh/syncmydep)
 
-> A high-performance, TypeScript-powered GitHub Action that detects package manifest and lockfile desynchronization or vulnerabilities, auto-fixes them across **npm**, **pnpm**, **yarn (v1 & berry)**, **bun**, and **deno** (including monorepos), and opens Pull Requests or commits fixes directly.
+> A high-performance, TypeScript-powered GitHub Action and multi-arch Docker container that detects package manifest and lockfile desynchronization or vulnerabilities, auto-fixes them across **npm**, **pnpm**, **yarn (v1 & berry)**, **bun**, and **deno** (including monorepos), and opens Pull Requests or commits fixes directly.
 
 <br clear="right"/>
 
@@ -23,13 +24,15 @@
   - **bun** (`bun.lock` / `bun.lockb`)
   - **deno** (`deno.lock` / `deno.json`)
 - 🏢 **Monorepo & Workspace Auto-Detection**: Automatically recognizes multi-package repositories powered by **Turborepo**, **pnpm workspaces**, **Lerna**, **Nx**, and standard **npm/yarn/bun workspaces**.
+- 🧹 **Workspace Sanitation (Ghost Lockfile Cleanup)**: Automatically identifies and purges rogue nested lockfiles inside individual sub-package directories that break hoisting and dependency resolution.
+- 🐳 **Multi-Arch Docker Runner (`ghcr.io`)**: Run locally or in custom CI pipelines via the official multi-architecture container (`linux/amd64` and Apple Silicon `linux/arm64`).
 - 🚦 **Check-Only / CI Gating Mode**: Dry-run mode (`check-only: true`) that emits GitHub step annotations and exits with code `1` if desynchronization or security vulnerabilities are detected.
 - ⚡ **Direct Push vs. PR Modes**: Optionally push fixes directly to active PR branches in place (`direct-push: true` or on `pull_request` triggers) without generating PR clutter.
 - 💬 **On-Demand PR Comments (`syncdep`)**: Comment `syncdep` on any open Pull Request to trigger an instant dependency sync and push directly to that PR branch with `👀` & `🚀` status reactions.
 - 🔒 **Repository Owner Authorization**: Built-in security that ensures only repository owners can trigger comment-based branch modifications.
 - ⚙️ **Config File Support**: Configure custom commit conventions, branch names, and rules in `.syncmydep.yml`.
-- 📊 **Detailed Dependency Diff Reports**: Markdown tables highlighting added (`✨`), upgraded (`🔄`), and removed (`🗑️`) packages with exact before-and-after versions.
-- ⚡ **Zero-Dependency Fast Runner**: Standalone compiled bundle using `@vercel/ncc` with no runtime `npm install` overhead on runners.
+- 📊 **Detailed Dependency Diff Reports**: Markdown tables and local `log_docker_dump.md` logs highlighting added (`✨`), upgraded (`🔄`), and removed (`🗑️`) packages with exact versions.
+- ⚡ **Zero-Dependency Fast Runner**: Standalone compiled bundle using `@vercel/ncc` with Node 22 LTS support.
 
 
 ## 🍃 Demo Video
@@ -156,7 +159,58 @@ jobs:
       - uses: actions/checkout@v4
       - uses: nivinvysakh/syncmydep@v1
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           check-only: "true"
+```
+
+---
+
+### 4. 🐳 Running as a Container Action in GitHub Actions
+
+For environments where you prefer running directly inside the containerized image from GitHub Container Registry (GHCR):
+
+```yaml
+name: Sync Dependencies (Container)
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run SyncMyDep from GHCR
+        uses: docker://ghcr.io/nivinvysakh/syncmydep:latest
+        env:
+          INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_SYNC_LOCKFILE: "true"
+          INPUT_FIX_AUDIT: "true"
+```
+
+---
+
+### 5. 💻 Running Locally on Developer Laptops (Docker CLI)
+
+You can run SyncMyDep directly on your local machine without installing Bun, Deno, pnpm, or Yarn:
+
+```bash
+# Run sync directly with the official GitHub Container Registry image
+docker run --rm -v "$(pwd)":/workspace ghcr.io/nivinvysakh/syncmydep:latest
+
+# Or run in check-only CI verification mode
+docker run --rm -v "$(pwd)":/workspace -e INPUT_CHECK_ONLY="true" ghcr.io/nivinvysakh/syncmydep:latest
+```
+
+Or using **Docker Compose**:
+```bash
+# Auto-sync and fix lockfiles in current project
+docker compose up syncmydep
+
+# Or verify lockfiles in check-only mode
+docker compose run --rm check
 ```
 
 ---
@@ -170,8 +224,13 @@ package-manager: "auto"
 sync-lockfile: true
 fix-audit: true
 audit-level: "moderate"
+dedupe: true # 🧹 Remove duplicate transitive dependencies from lockfile
 check-only: false
 direct-push: false
+
+# PR Settings
+base-branch: "main"
+pr-draft: false
 pr-branch: "syncmydep/dependency-fix"
 pr-title: "chore(deps): synchronize dependencies"
 commit-message: "chore(deps): update lockfile"
@@ -180,6 +239,22 @@ pr-labels:
   - "automated-pr"
 comment-trigger: "syncdep"
 require-owner: true
+
+# Verification & Performance
+verify-lockfile: true
+run-build: "npm run build"
+fail-on-build-error: false
+auto-merge: false
+cache: true
+step-summary: true
+
+# Package Filters & Monorepos
+ignore-packages:
+  - "@internal/legacy-sdk"
+monorepo:
+  root-only: false
+  ignore:
+    - "packages/deprecated"
 ```
 
 ---
@@ -195,14 +270,21 @@ require-owner: true
 | `sync-lockfile`       | Synchronize lockfile with package specifications                                     |    No    | `true`                                                      |
 | `fix-audit`           | Run security vulnerability auto-fix                                                  |    No    | `true`                                                      |
 | `audit-level`         | Minimum vulnerability severity: `low`, `moderate`, `high`, `critical`                |    No    | `moderate`                                                  |
+| `dedupe`              | Automatically deduplicate transitive dependencies in lockfile                       |    No    | `false`                                                     |
 | `check-only`          | Dry-run CI gating mode that emits step annotations and exits with code `1` on desync |    No    | `false`                                                     |
 | `direct-push`         | Commit and push directly to open PR branch on `pull_request` triggers                |    No    | `false`                                                     |
+| `base-branch`         | Custom base branch to target for PRs instead of default branch                       |    No    | `""`                                                        |
+| `pr-draft`            | Create the Pull Request as a Draft PR (`"true"` / `"false"`)                         |    No    | `false`                                                     |
 | `pr-branch`           | Branch name to push fixes to                                                         |    No    | `syncmydep/dependency-fix`                                  |
 | `pr-title`            | Title for the generated Pull Request                                                 |    No    | `chore(deps): synchronize package.json and lockfile issues` |
 | `commit-message`      | Commit message for the updates                                                       |    No    | `chore(deps): synchronize package.json and lockfile issues` |
 | `pr-labels`           | Comma-separated labels to attach to the PR                                           |    No    | `dependencies, automated-pr`                                |
 | `pr-assignees`        | Comma-separated usernames to assign                                                  |    No    | `""`                                                        |
 | `pr-reviewers`        | Comma-separated usernames to request review from                                     |    No    | `""`                                                        |
+| `pr-header`           | Custom Markdown text prepended to the generated PR description                       |    No    | `""`                                                        |
+| `pr-footer`           | Custom Markdown text appended to the generated PR description                        |    No    | `""`                                                        |
+| `ignore-packages`     | Comma-separated package names to ignore from sync or audit updates                   |    No    | `""`                                                        |
+| `step-summary`        | Render visual markdown dashboard to GitHub Actions Step Summary                      |    No    | `true`                                                      |
 | `comment-trigger`     | Keyword that triggers sync on a PR comment                                           |    No    | `syncdep`                                                   |
 | `require-owner`       | Restrict comment trigger commands strictly to repository owners                      |    No    | `true`                                                      |
 | `verify-lockfile`     | Run dry-run frozen installation check on generated lockfile                          |    No    | `true`                                                      |

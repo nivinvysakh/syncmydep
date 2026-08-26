@@ -1,0 +1,22 @@
+import { AuditInspectionResult } from './types';
+export declare function parseBool(val: string | undefined, defaultVal: boolean): boolean;
+export declare function generateDockerDumpMarkdown(data: {
+    workspaceDir: string;
+    pm: string;
+    yarnVariant?: string;
+    isMonorepo: boolean;
+    monorepoType?: string;
+    packageCount?: number;
+    syncSuccess: boolean;
+    syncLog: string;
+    auditBefore: AuditInspectionResult | null;
+    auditAfter: AuditInspectionResult | null;
+    auditFixLog: string;
+    dedupeLog: string;
+    integritySuccess: boolean;
+    integrityLog: string;
+    changedFiles: string[];
+    sanitizedLockfiles?: string[];
+    checkOnly: boolean;
+}): string;
+export declare function runCli(): Promise<void>;

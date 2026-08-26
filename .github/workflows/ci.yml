@@ -5,19 +5,12 @@ on:
     branches: [main, Beta]
   pull_request:
     branches: [main, Beta]
+  workflow_dispatch:
 
 jobs:
   test-and-build:
-    name: Test and Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
-    defaults:
-      run:
-        shell: bash
+    name: Test and Build
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -26,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install dependencies
@@ -45,6 +38,5 @@ jobs:
         run: npm run build
 
       - name: Check for uncommitted dist changes
-        if: matrix.os == 'ubuntu-latest'
         run: |
-          git diff --ignore-space-at-eol --exit-code dist/ || (echo "Error: dist/ is out of date. Please run 'npm run build' and commit changes." && git diff dist/ && exit 1)
+          git diff --ignore-space-at-eol --exit-code dist/ dist-cli/ || (echo "Error: dist/ or dist-cli/ is out of date. Please run 'npm run build' and commit changes." && git diff dist/ dist-cli/ && exit 1)

@@ -1,0 +1,8 @@
+node_modules/
+.git/
+.github/
+coverage/
+tests/
+*.log
+log_docker_dump.md
+.DS_Store

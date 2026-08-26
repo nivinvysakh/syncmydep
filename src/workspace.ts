@@ -57,6 +57,27 @@ export function detectWorkspace(workspaceDir: string): WorkspaceInfo {
     type = 'nx';
   }
 
+  // Check Deno workspaces (deno.json or deno.jsonc)
+  for (const denoConfigFile of ['deno.json', 'deno.jsonc']) {
+    const denoJsonPath = path.join(workspaceDir, denoConfigFile);
+    if (fs.existsSync(denoJsonPath)) {
+      try {
+        const denoConfig = JSON.parse(fs.readFileSync(denoJsonPath, 'utf8'));
+        const wsMembers = denoConfig.workspace || denoConfig.workspaces;
+        if (wsMembers) {
+          if (type === 'none') {
+            type = 'deno';
+          }
+          if (Array.isArray(wsMembers)) {
+            patterns.push(...wsMembers);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   // Check package.json workspaces (npm, yarn, bun)
   const pkgJsonPath = path.join(workspaceDir, 'package.json');
   if (fs.existsSync(pkgJsonPath)) {
@@ -89,14 +110,31 @@ export function detectWorkspace(workspaceDir: string): WorkspaceInfo {
 }
 
 /**
- * Resolves directory paths containing package.json for standard glob patterns (e.g. packages/*).
+ * Resolves directory paths containing package.json or deno.json for standard glob patterns (e.g. packages/*).
  */
 function findWorkspacePackages(workspaceDir: string, patterns: string[]): string[] {
   const discovered: string[] = [];
   const searchDirs = patterns.length > 0 ? patterns : ['packages/*', 'apps/*', 'libs/*'];
 
   for (const pattern of searchDirs) {
-    const baseDirName = pattern.replace(/\/\*.*$/, '').trim();
+    // If the pattern is an exact directory without wildcards (e.g. 'apps/api', './packages/ui')
+    if (!pattern.includes('*')) {
+      const cleanDir = pattern.replace(/^\.\//, '').trim();
+      const fullDir = path.join(workspaceDir, cleanDir);
+      if (fs.existsSync(fullDir) && fs.statSync(fullDir).isDirectory()) {
+        const hasManifest =
+          fs.existsSync(path.join(fullDir, 'package.json')) ||
+          fs.existsSync(path.join(fullDir, 'deno.json')) ||
+          fs.existsSync(path.join(fullDir, 'deno.jsonc'));
+        if (hasManifest) {
+          discovered.push(cleanDir.replace(/\\/g, '/'));
+        }
+      }
+      continue;
+    }
+
+    // Pattern is a wildcard (e.g. 'packages/*', 'apps/*')
+    const baseDirName = pattern.replace(/\/\*.*$/, '').replace(/^\.\//, '').trim();
     const fullBaseDir = path.join(workspaceDir, baseDirName);
 
     if (fs.existsSync(fullBaseDir) && fs.statSync(fullBaseDir).isDirectory()) {
@@ -104,8 +142,12 @@ function findWorkspacePackages(workspaceDir: string, patterns: string[]): string
         const entries = fs.readdirSync(fullBaseDir, { withFileTypes: true });
         for (const entry of entries) {
           if (entry.isDirectory()) {
-            const childPkg = path.join(fullBaseDir, entry.name, 'package.json');
-            if (fs.existsSync(childPkg)) {
+            const childDir = path.join(fullBaseDir, entry.name);
+            const hasManifest =
+              fs.existsSync(path.join(childDir, 'package.json')) ||
+              fs.existsSync(path.join(childDir, 'deno.json')) ||
+              fs.existsSync(path.join(childDir, 'deno.jsonc'));
+            if (hasManifest) {
               discovered.push(path.join(baseDirName, entry.name).replace(/\\/g, '/'));
             }
           }
@@ -118,3 +160,49 @@ function findWorkspacePackages(workspaceDir: string, patterns: string[]): string
 
   return Array.from(new Set(discovered));
 }
+
+/**
+ * Scans nested workspace package directories and cleans up any "ghost" lockfiles
+ * (e.g. package-lock.json, pnpm-lock.yaml, yarn.lock, bun.lock, bun.lockb, deno.lock)
+ * that violate monorepo hoisting and break dependency resolution.
+ *
+ * @returns Array of relative paths of deleted ghost lockfiles.
+ */
+export function sanitizeWorkspaceLockfiles(
+  workspaceDir: string,
+  workspaceInfo: WorkspaceInfo
+): string[] {
+  if (!workspaceInfo.isMonorepo || workspaceInfo.packages.length === 0) {
+    return [];
+  }
+
+  const ghostLockfileNames = [
+    'package-lock.json',
+    'pnpm-lock.yaml',
+    'yarn.lock',
+    'bun.lock',
+    'bun.lockb',
+    'deno.lock'
+  ];
+
+  const removedGhostFiles: string[] = [];
+
+  for (const pkgRelPath of workspaceInfo.packages) {
+    const pkgFullPath = path.join(workspaceDir, pkgRelPath);
+    for (const lockfile of ghostLockfileNames) {
+      const nestedLockfilePath = path.join(pkgFullPath, lockfile);
+      if (fs.existsSync(nestedLockfilePath)) {
+        try {
+          fs.unlinkSync(nestedLockfilePath);
+          const relGhost = path.join(pkgRelPath, lockfile).replace(/\\/g, '/');
+          removedGhostFiles.push(relGhost);
+        } catch {
+          // ignore unlink error
+        }
+      }
+    }
+  }
+
+  return removedGhostFiles;
+}
+

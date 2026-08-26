@@ -4,6 +4,7 @@ import {
   detectPackageManager,
   detectYarnVariant,
   checkPackageJsonExists,
+  checkGitRepository,
   getLockfileName,
   parseNpmAuditAdvisories,
   parseYarnAuditAdvisories
@@ -22,6 +23,11 @@ describe('detector', () => {
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  test('checkGitRepository correctly identifies git repositories', async () => {
+    const isGit = await checkGitRepository(process.cwd());
+    expect(isGit).toBe(true);
   });
 
   test('getLockfileName returns corresponding lockfile for all managers', () => {

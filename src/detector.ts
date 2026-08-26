@@ -103,6 +103,15 @@ export function checkPackageJsonExists(workspaceDir: string, pm: PackageManager 
 }
 
 /**
+ * Checks if the specified directory is inside an initialized Git repository.
+ */
+export async function checkGitRepository(workspaceDir: string): Promise<boolean> {
+  const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
+  const exitCode = await exec.exec('git', ['rev-parse', '--is-inside-work-tree'], options);
+  return exitCode === 0;
+}
+
+/**
  * Gets primary lockfile name associated with a package manager.
  */
 export function getLockfileName(pm: PackageManager): string {

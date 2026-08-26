@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import * as exec from '@actions/exec';
 import * as core from '@actions/core';
 import {
@@ -34,7 +36,7 @@ export async function syncLockfile(
 
     case 'pnpm':
       command = 'pnpm';
-      args = ['install', '--lockfile-only', '--no-frozen-lockfile'];
+      args = ['install', '--lockfile-only', '--no-frozen-lockfile', '--config.confirmModulesPurge=false'];
       break;
 
     case 'yarn':
@@ -58,6 +60,7 @@ export async function syncLockfile(
   const options = {
     cwd: workspaceDir,
     ignoreReturnCode: true,
+    silent: process.env.SYNCMYDEP_SILENT === 'true',
     listeners: {
       stdout: (data: Buffer) => {
         output += data.toString();
@@ -69,6 +72,26 @@ export async function syncLockfile(
   };
 
   const exitCode = await exec.exec(command, args, options);
+  const lockfilePath = path.join(workspaceDir, 'package-lock.json');
+
+  // Fallback for npm (e.g. monorepo workspaces or cross-platform packages with EBADPLATFORM)
+  if (pm === 'npm' && (exitCode !== 0 || !fs.existsSync(lockfilePath))) {
+    const isBadPlatform = output.includes('EBADPLATFORM');
+    const fallbackArgs = isBadPlatform
+      ? ['install', '--package-lock-only', '--no-audit', '--no-fund', '--force']
+      : ['install', '--ignore-scripts', '--no-audit', '--no-fund'];
+    core.info(`[SyncMyDep] Retrying npm synchronization with npm ${fallbackArgs.join(' ')}...`);
+    output = '';
+    let retryCode = await exec.exec('npm', fallbackArgs, options);
+    if (retryCode !== 0 && !isBadPlatform) {
+      core.info('[SyncMyDep] Retrying npm synchronization with npm install --ignore-scripts --no-audit --no-fund --force...');
+      retryCode = await exec.exec('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--force'], options);
+    }
+    return {
+      success: retryCode === 0,
+      output
+    };
+  }
 
   // Fallback for Bun if --lockfile-only is not supported on older versions
   if (exitCode !== 0 && pm === 'bun') {
@@ -102,7 +125,8 @@ export async function syncLockfile(
 export async function runAuditFix(
   workspaceDir: string,
   pm: PackageManager,
-  auditLevel: string = 'moderate'
+  auditLevel: string = 'moderate',
+  yarnVariant: YarnVariant = 'classic'
 ): Promise<SyncResult> {
   let output = '';
   let command = '';
@@ -116,10 +140,14 @@ export async function runAuditFix(
 
     case 'pnpm':
       command = 'pnpm';
-      args = ['audit', '--fix'];
+      args = ['audit', '--fix=update'];
       break;
 
     case 'yarn':
+      if (yarnVariant === 'berry') {
+        core.info(`[SyncMyDep] Yarn Berry uses 'yarn npm audit' for vulnerability scanning; automated audit fix is not supported. Skipping audit fix step.`);
+        return { success: true, output: '' };
+      }
       command = 'yarn';
       args = ['audit', '--fix'];
       break;
@@ -140,6 +168,95 @@ export async function runAuditFix(
   const options = {
     cwd: workspaceDir,
     ignoreReturnCode: true,
+    silent: process.env.SYNCMYDEP_SILENT === 'true',
+    listeners: {
+      stdout: (data: Buffer) => {
+        output += data.toString();
+      },
+      stderr: (data: Buffer) => {
+        output += data.toString();
+      }
+    }
+  };
+
+  const exitCode = await exec.exec(command, args, options);
+
+  if (exitCode !== 0 && pm === 'pnpm' && output.includes('ERR_PNPM_INVALID_FIX_OPTION')) {
+    core.info(`[SyncMyDep] Retrying pnpm audit with fallback --fix...`);
+    output = '';
+    const retryCode = await exec.exec('pnpm', ['audit', '--fix'], options);
+    return {
+      success: retryCode === 0,
+      output
+    };
+  }
+
+  if (exitCode !== 0 && pm === 'npm' && (output.includes('EBADPLATFORM') || output.includes('ENOLOCK'))) {
+    core.info(`[SyncMyDep] Retrying npm audit fix with --force...`);
+    output = '';
+    const retryCode = await exec.exec('npm', ['audit', 'fix', `--audit-level=${auditLevel}`, '--force'], options);
+    return {
+      success: retryCode === 0,
+      output
+    };
+  }
+
+  return {
+    success: exitCode === 0,
+    output
+  };
+}
+
+/**
+ * Runs lockfile deduplication to clean up duplicate sub-dependencies.
+ */
+export async function runDedupe(
+  workspaceDir: string,
+  pm: PackageManager,
+  yarnVariant: YarnVariant = 'classic'
+): Promise<SyncResult> {
+  let output = '';
+  let command = '';
+  let args: string[] = [];
+
+  switch (pm) {
+    case 'npm':
+      command = 'npm';
+      args = ['dedupe'];
+      break;
+
+    case 'pnpm':
+      command = 'pnpm';
+      args = ['dedupe'];
+      break;
+
+    case 'yarn':
+      command = 'yarn';
+      if (yarnVariant === 'berry') {
+        args = ['dedupe'];
+      } else {
+        // Classic yarn doesn't have a native built-in dedupe command, runs standard install
+        args = ['install', '--prefer-offline'];
+      }
+      break;
+
+    case 'bun':
+      command = 'bun';
+      args = ['install'];
+      break;
+
+    case 'deno':
+    default:
+      core.info(`[SyncMyDep] Deduplication is not applicable for ${pm}.`);
+      return { success: true, output: '' };
+  }
+
+  core.info(`[SyncMyDep] Running lockfile deduplication using ${command} ${args.join(' ')}...`);
+
+  const options = {
+    cwd: workspaceDir,
+    ignoreReturnCode: true,
+    silent: process.env.SYNCMYDEP_SILENT === 'true',
     listeners: {
       stdout: (data: Buffer) => {
         output += data.toString();
@@ -412,7 +529,7 @@ export async function verifyLockfileIntegrity(
   switch (pm) {
     case 'pnpm':
       command = 'pnpm';
-      args = ['install', '--frozen-lockfile', '--prefer-offline'];
+      args = ['install', '--frozen-lockfile', '--prefer-offline', '--config.confirmModulesPurge=false'];
       break;
 
     case 'yarn':

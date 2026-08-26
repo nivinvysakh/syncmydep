@@ -37,13 +37,23 @@ export function buildMarkdownSummary({
   dependencyDiffs = [],
   syncedLockfile,
   fixedAudit,
+  dedupeRun,
+  dedupeSuccess,
   auditBefore,
   auditAfter,
   lockfileVerified,
-  buildResult
+  buildResult,
+  prHeader,
+  prFooter
 }: SummaryOptions): string {
   const pmDisplay = pm === 'yarn' && yarnVariant === 'berry' ? 'yarn (berry)' : pm;
-  let md = `## 🤖 SyncMyDep: Automated Dependency Synchronization\n\n`;
+  let md = '';
+
+  if (prHeader) {
+    md += `${prHeader.trim()}\n\n`;
+  }
+
+  md += `## 🤖 SyncMyDep: Automated Dependency Synchronization\n\n`;
   md += `SyncMyDep detected desynchronization or security vulnerabilities in your project's dependencies and generated this Pull Request.\n\n`;
 
   md += `### 📦 Overview\n\n`;
@@ -53,6 +63,9 @@ export function buildMarkdownSummary({
   }
   md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
   md += `- **Security Audit Fix**: ${formatAuditStatus(fixedAudit, auditBefore, auditAfter)}\n`;
+  if (dedupeRun !== undefined) {
+    md += `- **Lockfile Deduplication**: ${dedupeSuccess ? '✅ Applied (sub-dependency trees optimized)' : '⚠️ Skipped / Failed'}\n`;
+  }
   if (lockfileVerified !== undefined) {
     md += `- **Lockfile Integrity Verification**: ${lockfileVerified ? '✅ Passed (dry-run installation verified)' : '⚠️ Warning (dry-run inspection failed)'}\n`;
   }
@@ -105,6 +118,10 @@ export function buildMarkdownSummary({
   md += `- [ ] Review package version changes in \`package.json\` / lockfiles.\n`;
   md += `- [ ] Merge this PR to keep repository dependencies synchronized and secure.\n\n`;
 
+  if (prFooter) {
+    md += `\n${prFooter.trim()}\n\n`;
+  }
+
   md += `---\n*Generated automatically by [SyncMyDep GitHub Action](https://github.com/nivinvysakh/syncmydep).*`;
 
   return md;
@@ -122,15 +139,25 @@ export function buildCommentSummary({
   dependencyDiffs = [],
   syncedLockfile,
   fixedAudit,
+  dedupeRun,
+  dedupeSuccess,
   auditBefore,
   auditAfter,
   lockfileVerified,
   buildResult,
+  prHeader,
+  prFooter,
   branch,
   commenter
 }: CommentSummaryOptions): string {
   const pmDisplay = pm === 'yarn' && yarnVariant === 'berry' ? 'yarn (berry)' : pm;
-  let md = `### 🚀 SyncMyDep: Dependencies Synchronized on \`${branch}\`\n\n`;
+  let md = '';
+
+  if (prHeader) {
+    md += `${prHeader.trim()}\n\n`;
+  }
+
+  md += `### 🚀 SyncMyDep: Dependencies Synchronized on \`${branch}\`\n\n`;
   if (commenter) {
     md += `Triggered by @${commenter}'s \`syncdep\` command.\n\n`;
   }
@@ -142,6 +169,9 @@ export function buildCommentSummary({
   }
   md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
   md += `- **Security Audit Fix**: ${formatAuditStatus(fixedAudit, auditBefore, auditAfter)}\n`;
+  if (dedupeRun !== undefined) {
+    md += `- **Lockfile Deduplication**: ${dedupeSuccess ? '✅ Applied' : '⚠️ Skipped'}\n`;
+  }
   if (lockfileVerified !== undefined) {
     md += `- **Lockfile Integrity**: ${lockfileVerified ? '✅ Passed' : '⚠️ Warning'}\n`;
   }
@@ -175,6 +205,10 @@ export function buildCommentSummary({
   if (diffStat) {
     md += `#### 📊 Diff Summary\n`;
     md += `\`\`\`text\n${diffStat}\n\`\`\`\n\n`;
+  }
+
+  if (prFooter) {
+    md += `\n${prFooter.trim()}\n\n`;
   }
 
   md += `---\n*Pushed directly to \`${branch}\` by [SyncMyDep](https://github.com/nivinvysakh/syncmydep).*`;

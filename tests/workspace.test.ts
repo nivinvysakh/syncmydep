@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { detectWorkspace } from '../src/workspace';
+import { detectWorkspace, sanitizeWorkspaceLockfiles } from '../src/workspace';
 
 describe('workspace detector', () => {
   let tmpDir: string;
@@ -70,5 +70,62 @@ describe('workspace detector', () => {
     expect(info.type).toBe('npm');
     expect(info.patterns).toEqual(['apps/*', 'packages/*']);
     expect(info.packages).toContain('apps/web');
+  });
+
+  test('detects deno.json workspaces', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'deno.json'),
+      JSON.stringify({ workspace: ['apps/api', 'apps/cli'] })
+    );
+    const apiDir = path.join(tmpDir, 'apps', 'api');
+    const cliDir = path.join(tmpDir, 'apps', 'cli');
+    fs.mkdirSync(apiDir, { recursive: true });
+    fs.mkdirSync(cliDir, { recursive: true });
+    fs.writeFileSync(path.join(apiDir, 'deno.json'), JSON.stringify({ name: '@deno/api' }));
+    fs.writeFileSync(path.join(cliDir, 'deno.json'), JSON.stringify({ name: '@deno/cli' }));
+
+    const info = detectWorkspace(tmpDir);
+    expect(info.isMonorepo).toBe(true);
+    expect(info.type).toBe('deno');
+    expect(info.packages).toContain('apps/api');
+    expect(info.packages).toContain('apps/cli');
+  });
+
+  describe('sanitizeWorkspaceLockfiles (Ghost Lockfile Cleanup)', () => {
+    test('purges ghost nested lockfiles in subpackages', () => {
+      fs.writeFileSync(
+        path.join(tmpDir, 'package.json'),
+        JSON.stringify({ name: 'root', workspaces: ['apps/*', 'packages/*'] })
+      );
+
+      const apiDir = path.join(tmpDir, 'apps', 'api');
+      const uiDir = path.join(tmpDir, 'packages', 'ui');
+      fs.mkdirSync(apiDir, { recursive: true });
+      fs.mkdirSync(uiDir, { recursive: true });
+
+      fs.writeFileSync(path.join(apiDir, 'package.json'), JSON.stringify({ name: '@monorepo/api' }));
+      fs.writeFileSync(path.join(uiDir, 'package.json'), JSON.stringify({ name: '@monorepo/ui' }));
+
+      // Create ghost nested lockfiles
+      fs.writeFileSync(path.join(apiDir, 'package-lock.json'), '{}');
+      fs.writeFileSync(path.join(uiDir, 'yarn.lock'), '');
+
+      const info = detectWorkspace(tmpDir);
+      const purged = sanitizeWorkspaceLockfiles(tmpDir, info);
+
+      expect(purged).toHaveLength(2);
+      expect(purged).toContain('apps/api/package-lock.json');
+      expect(purged).toContain('packages/ui/yarn.lock');
+
+      // Verify files were actually deleted from disk
+      expect(fs.existsSync(path.join(apiDir, 'package-lock.json'))).toBe(false);
+      expect(fs.existsSync(path.join(uiDir, 'yarn.lock'))).toBe(false);
+    });
+
+    test('does nothing for non-monorepos or clean workspaces', () => {
+      const nonMonorepoInfo = { isMonorepo: false, type: 'none' as const, patterns: [], packages: [] };
+      const purged = sanitizeWorkspaceLockfiles(tmpDir, nonMonorepoInfo);
+      expect(purged).toEqual([]);
+    });
   });
 });

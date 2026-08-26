@@ -12,6 +12,7 @@ import {
 import {
   syncLockfile,
   runAuditFix,
+  runDedupe,
   getGitStatus,
   getGitDiffStat,
   parseDependencyDiffs,
@@ -31,7 +32,7 @@ import {
 } from './git-pr';
 
 import { loadConfigFile } from './config';
-import { detectWorkspace } from './workspace';
+import { detectWorkspace, sanitizeWorkspaceLockfiles } from './workspace';
 import { ensurePackageManagerInstalled } from './installer';
 import { restorePackageCache, savePackageCache } from './cache';
 import { rebaseAndRedoProcess, deleteRemoteBranch } from './rebase-pr';
@@ -40,8 +41,8 @@ import { AuditInspectionResult, BuildVerificationResult } from './types';
 
 async function run(): Promise<void> {
   try {
-    const customConfigPath = core.getInput('config-file') || '';
     const workingDirInput = core.getInput('working-directory') || '.';
+    const customConfigPath = core.getInput('config-file') || undefined;
     const workspaceDir = path.resolve(process.cwd(), workingDirInput);
 
     // 1. Load .syncmydeprc.json if present
@@ -63,12 +64,25 @@ async function run(): Promise<void> {
     const directPush = core.getInput('direct-push') !== ''
       ? core.getBooleanInput('direct-push')
       : fileConfig.directPush ?? false;
+    const dedupeOption = core.getInput('dedupe') !== ''
+      ? core.getBooleanInput('dedupe')
+      : fileConfig.dedupe ?? false;
+    const baseBranchInput = core.getInput('base-branch') || fileConfig.baseBranch || '';
+    const prDraft = core.getInput('pr-draft') !== ''
+      ? core.getBooleanInput('pr-draft')
+      : fileConfig.prDraft ?? false;
+    const stepSummary = core.getInput('step-summary') !== ''
+      ? core.getBooleanInput('step-summary')
+      : fileConfig.stepSummary ?? true;
+    const prHeader = core.getInput('pr-header') || fileConfig.prHeader || '';
+    const prFooter = core.getInput('pr-footer') || fileConfig.prFooter || '';
     const branchName = core.getInput('pr-branch') || fileConfig.prBranch || 'syncmydep/dependency-fix';
     const prTitle = core.getInput('pr-title') || fileConfig.prTitle || 'chore(deps): synchronize package.json and lockfile issues';
     const commitMessage = core.getInput('commit-message') || fileConfig.commitMessage || 'chore(deps): synchronize package.json and lockfile issues';
     const labelsInput = core.getInput('pr-labels') || (fileConfig.prLabels ? fileConfig.prLabels.join(',') : '');
     const assigneesInput = core.getInput('pr-assignees') || (fileConfig.prAssignees ? fileConfig.prAssignees.join(',') : '');
     const reviewersInput = core.getInput('pr-reviewers') || (fileConfig.prReviewers ? fileConfig.prReviewers.join(',') : '');
+    const ignorePackagesInput = core.getInput('ignore-packages') || (fileConfig.ignorePackages ? fileConfig.ignorePackages.join(',') : '');
     const commentTrigger = (core.getInput('comment-trigger') || fileConfig.commentTrigger || 'syncdep').toLowerCase().trim();
     const requireOwner = core.getInput('require-owner') !== ''
       ? core.getBooleanInput('require-owner')
@@ -91,13 +105,21 @@ async function run(): Promise<void> {
     const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const reviewers = reviewersInput ? reviewersInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const ignorePackages = ignorePackagesInput ? ignorePackagesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
 
     core.info(`[SyncMyDep] Working directory: ${workspaceDir}`);
+    if (ignorePackages.length > 0) {
+      core.info(`[SyncMyDep] Package ignore filter active: ${ignorePackages.join(', ')}`);
+    }
 
-    // 3. Workspace / Monorepo Detection
+    // 3. Workspace / Monorepo Detection & Ghost Lockfile Sanitation
     const workspaceInfo = detectWorkspace(workspaceDir);
     if (workspaceInfo.isMonorepo) {
       core.info(`[SyncMyDep] Monorepo detected: type=${workspaceInfo.type}, packages=${workspaceInfo.packages.length}`);
+      const ghostLockfiles = sanitizeWorkspaceLockfiles(workspaceDir, workspaceInfo);
+      if (ghostLockfiles.length > 0) {
+        core.info(`[SyncMyDep] 🧹 Workspace Sanitation: Purged ${ghostLockfiles.length} ghost nested lockfile(s): ${ghostLockfiles.join(', ')}`);
+      }
     }
 
     const eventName = github.context.eventName;
@@ -251,9 +273,18 @@ async function run(): Promise<void> {
 
       let fixedAudit = false;
       if (fixAuditOption) {
-        const auditResult = await runAuditFix(workspaceDir, pm, auditLevel);
+        const auditResult = await runAuditFix(workspaceDir, pm, auditLevel, yarnVariant);
         fixedAudit = auditResult.success;
         auditAfter = await inspectAudit(workspaceDir, pm);
+      }
+
+      let dedupeRun = false;
+      let dedupeSuccess = false;
+      const isDedupe = commentBody.includes('dedupe');
+      if (dedupeOption || isDedupe) {
+        dedupeRun = true;
+        const dedupeResult = await runDedupe(workspaceDir, pm, yarnVariant);
+        dedupeSuccess = dedupeResult.success;
       }
 
       const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
@@ -294,8 +325,12 @@ async function run(): Promise<void> {
         dependencyDiffs,
         syncedLockfile,
         fixedAudit,
+        dedupeRun,
+        dedupeSuccess,
         auditBefore,
         auditAfter,
+        prHeader,
+        prFooter,
         branch: prDetails.headBranch,
         commenter
       });
@@ -362,9 +397,17 @@ async function run(): Promise<void> {
 
     let fixedAudit = false;
     if (fixAuditOption && !checkOnly) {
-      const auditResult = await runAuditFix(workspaceDir, pm, auditLevel);
+      const auditResult = await runAuditFix(workspaceDir, pm, auditLevel, yarnVariant);
       fixedAudit = auditResult.success;
       auditAfter = await inspectAudit(workspaceDir, pm);
+    }
+
+    let dedupeRun = false;
+    let dedupeSuccess = false;
+    if (dedupeOption && !checkOnly) {
+      dedupeRun = true;
+      const dedupeResult = await runDedupe(workspaceDir, pm, yarnVariant);
+      dedupeSuccess = dedupeResult.success;
     }
 
     if (cacheOption && cacheKey) {
@@ -397,10 +440,12 @@ async function run(): Promise<void> {
         core.setOutput('changes-detected', 'false');
         core.setOutput('modified-files', '');
 
-        await core.summary
-          .addHeading('SyncMyDep: CI Check Passed')
-          .addRaw('✅ **All dependencies and lockfiles are synchronized.** No action required.')
-          .write();
+        if (stepSummary) {
+          await core.summary
+            .addHeading('SyncMyDep: CI Check Passed')
+            .addRaw('✅ **All dependencies and lockfiles are synchronized.** No action required.')
+            .write();
+        }
         return;
       }
 
@@ -415,10 +460,12 @@ async function run(): Promise<void> {
         core.error(`[SyncMyDep] ${auditBefore.total} security vulnerabilities detected in dependencies.`);
       }
 
-      await core.summary
-        .addHeading('SyncMyDep: CI Check Failed')
-        .addRaw(`❌ **Desynchronization or security vulnerabilities detected in:** \`${changedFiles.join(', ')}\`\n\nRun SyncMyDep to automatically fix and sync your lockfiles.`)
-        .write();
+      if (stepSummary) {
+        await core.summary
+          .addHeading('SyncMyDep: CI Check Failed')
+          .addRaw(`❌ **Desynchronization or security vulnerabilities detected in:** \`${changedFiles.join(', ')}\`\n\nRun SyncMyDep to automatically fix and sync your lockfiles.`)
+          .write();
+      }
 
       core.setFailed(`SyncMyDep Check-Only failed: lockfiles are desynchronized or vulnerabilities were detected.`);
       return;
@@ -430,10 +477,12 @@ async function run(): Promise<void> {
       core.setOutput('changes-detected', 'false');
       core.setOutput('modified-files', '');
 
-      await core.summary
-        .addHeading('SyncMyDep: Dependency Check Result')
-        .addRaw('✅ **All dependencies and lockfiles are synchronized and healthy.** No Pull Request is needed.')
-        .write();
+      if (stepSummary) {
+        await core.summary
+          .addHeading('SyncMyDep: Dependency Check Result')
+          .addRaw('✅ **All dependencies and lockfiles are synchronized and healthy.** No Pull Request is needed.')
+          .write();
+      }
 
       return;
     }
@@ -455,10 +504,14 @@ async function run(): Promise<void> {
       dependencyDiffs,
       syncedLockfile,
       fixedAudit,
+      dedupeRun,
+      dedupeSuccess,
       auditBefore,
       auditAfter,
       lockfileVerified,
-      buildResult
+      buildResult,
+      prHeader,
+      prFooter
     });
 
     if (!token) {
@@ -515,15 +568,17 @@ async function run(): Promise<void> {
       return;
     }
 
-    let baseBranch = 'main';
-    if (github.context.ref && github.context.ref.startsWith('refs/heads/')) {
-      baseBranch = github.context.ref.replace('refs/heads/', '');
-    } else {
-      try {
-        const repoInfo = await octokit.rest.repos.get({ owner, repo });
-        baseBranch = repoInfo.data.default_branch || 'main';
-      } catch {
-        baseBranch = 'main';
+    let baseBranch = baseBranchInput || 'main';
+    if (!baseBranchInput) {
+      if (github.context.ref && github.context.ref.startsWith('refs/heads/')) {
+        baseBranch = github.context.ref.replace('refs/heads/', '');
+      } else {
+        try {
+          const repoInfo = await octokit.rest.repos.get({ owner, repo });
+          baseBranch = repoInfo.data.default_branch || 'main';
+        } catch {
+          baseBranch = 'main';
+        }
       }
     }
 
@@ -535,6 +590,7 @@ async function run(): Promise<void> {
       headBranch: branchName,
       title: prTitle,
       body: prBody,
+      draft: prDraft,
       labels,
       assignees,
       reviewers,
@@ -545,11 +601,13 @@ async function run(): Promise<void> {
     core.setOutput('pull-request-number', String(prResult.number));
     core.setOutput('pull-request-url', prResult.url);
 
-    await core.summary
-      .addHeading('SyncMyDep: PR Created / Updated')
-      .addRaw(`🚀 **Pull Request #${prResult.number}**: [${prTitle}](${prResult.url})\n\n`)
-      .addRaw(prBody)
-      .write();
+    if (stepSummary) {
+      await core.summary
+        .addHeading('SyncMyDep: PR Created / Updated')
+        .addRaw(`🚀 **Pull Request #${prResult.number}**: [${prTitle}](${prResult.url})\n\n`)
+        .addRaw(prBody)
+        .write();
+    }
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : String(error);
     core.setFailed(`[SyncMyDep Action Failed]: ${errMsg}`);
