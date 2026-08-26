@@ -6,13 +6,6 @@ on:
   pull_request:
     branches: [main, Beta]
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
-
 jobs:
   test-and-build:
     name: Test and Build
