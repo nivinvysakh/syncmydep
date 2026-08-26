@@ -1,5 +1,5 @@
 * text=auto eol=lf
 
 # Ignore compiled build artifacts from GitHub Linguist language statistics and PR diffs
-dist/** linguist-generated=true linguist-vendored=true
-dist-cli/** linguist-generated=true linguist-vendored=true
+dist/** linguist-vendored
+dist-cli/** linguist-vendored
