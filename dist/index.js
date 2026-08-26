@@ -95023,6 +95023,9 @@ async function checkoutBranch(workspaceDir, branch, prNumber) {
  */
 async function commitAndPushChanges({ workspaceDir, branch, commitMessage, files, isFork, headRepo, token, }) {
     const options = { cwd: workspaceDir, ignoreReturnCode: true };
+    // Always fetch latest commits from remote before creating branch or committing
+    lib_core.info(`[SyncMyDep] Fetching latest commits from remote...`);
+    await lib_exec.exec("git", ["fetch", "origin", "--force"], { cwd: workspaceDir, silent: true, ignoreReturnCode: true });
     lib_core.info(`[SyncMyDep] Staging changed files: ${files.join(", ")}...`);
     await lib_exec.exec("git", ["add", ...files], options);
     lib_core.info(`[SyncMyDep] Committing changes...`);
