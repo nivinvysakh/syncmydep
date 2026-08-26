@@ -4,6 +4,7 @@ import {
   detectPackageManager,
   detectYarnVariant,
   checkPackageJsonExists,
+  checkGitRepository,
   inspectAudit
 } from './detector';
 import {
@@ -143,6 +144,19 @@ export async function runCli(): Promise<void> {
 
   if (!checkPackageJsonExists(workspaceDir, pm)) {
     console.error(`\n❌ Error: Package manifest not found in ${workspaceDir}`);
+    console.log('=============================================================\n');
+    process.exit(1);
+  }
+
+  const isGitRepo = await checkGitRepository(workspaceDir);
+  if (!isGitRepo) {
+    console.error(`\n❌ Error: '${workspaceDir}' is not an initialized Git repository!`);
+    console.error('   SyncMyDep requires Git to track lockfile drift and detect modified files.\n');
+    console.warn('💡 Tip: Initialize git in this directory by running:');
+    console.warn('   git init');
+    console.warn('   git add .');
+    console.warn('   git commit -m "chore: initial commit"');
+    console.log('=============================================================\n');
     process.exit(1);
   }
 
@@ -169,7 +183,7 @@ export async function runCli(): Promise<void> {
 
   if (fixAuditOption && !checkOnly) {
     console.log(`🛡️  Running audit fix (${auditLevel})...`);
-    const auditRes = await runAuditFix(workspaceDir, pm, auditLevel);
+    const auditRes = await runAuditFix(workspaceDir, pm, auditLevel, yarnVariant);
     auditFixLog = auditRes?.output ?? '';
     auditAfter = await inspectAudit(workspaceDir, pm);
   }

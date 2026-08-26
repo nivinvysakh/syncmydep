@@ -27691,6 +27691,14 @@ function checkPackageJsonExists(workspaceDir, pm = 'npm') {
     return external_fs_.existsSync(external_path_.join(workspaceDir, 'package.json'));
 }
 /**
+ * Checks if the specified directory is inside an initialized Git repository.
+ */
+async function checkGitRepository(workspaceDir) {
+    const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
+    const exitCode = await lib_exec.exec('git', ['rev-parse', '--is-inside-work-tree'], options);
+    return exitCode === 0;
+}
+/**
  * Gets primary lockfile name associated with a package manager.
  */
 function getLockfileName(pm) {
@@ -28004,7 +28012,7 @@ async function syncLockfile(workspaceDir, pm, yarnVariant = 'classic') {
 /**
  * Runs security audit fix commands if available for the package manager.
  */
-async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
+async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate', yarnVariant = 'classic') {
     let output = '';
     let command = '';
     let args = [];
@@ -28018,6 +28026,10 @@ async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
             args = ['audit', '--fix=update'];
             break;
         case 'yarn':
+            if (yarnVariant === 'berry') {
+                lib_core.info(`[SyncMyDep] Yarn Berry uses 'yarn npm audit' for vulnerability scanning; automated audit fix is not supported. Skipping audit fix step.`);
+                return { success: true, output: '' };
+            }
             command = 'yarn';
             args = ['audit', '--fix'];
             break;
@@ -31872,6 +31884,18 @@ async function runCli() {
     console.log(`⚡ Package Manager: ${pm}${yarnVariant ? ` (${yarnVariant})` : ''}`);
     if (!checkPackageJsonExists(workspaceDir, pm)) {
         console.error(`\n❌ Error: Package manifest not found in ${workspaceDir}`);
+        console.log('=============================================================\n');
+        process.exit(1);
+    }
+    const isGitRepo = await checkGitRepository(workspaceDir);
+    if (!isGitRepo) {
+        console.error(`\n❌ Error: '${workspaceDir}' is not an initialized Git repository!`);
+        console.error('   SyncMyDep requires Git to track lockfile drift and detect modified files.\n');
+        console.warn('💡 Tip: Initialize git in this directory by running:');
+        console.warn('   git init');
+        console.warn('   git add .');
+        console.warn('   git commit -m "chore: initial commit"');
+        console.log('=============================================================\n');
         process.exit(1);
     }
     let auditBefore = null;
@@ -31894,7 +31918,7 @@ async function runCli() {
     }
     if (fixAuditOption && !checkOnly) {
         console.log(`🛡️  Running audit fix (${auditLevel})...`);
-        const auditRes = await runAuditFix(workspaceDir, pm, auditLevel);
+        const auditRes = await runAuditFix(workspaceDir, pm, auditLevel, yarnVariant);
         auditFixLog = auditRes?.output ?? '';
         auditAfter = await inspectAudit(workspaceDir, pm);
     }

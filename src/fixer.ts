@@ -125,7 +125,8 @@ export async function syncLockfile(
 export async function runAuditFix(
   workspaceDir: string,
   pm: PackageManager,
-  auditLevel: string = 'moderate'
+  auditLevel: string = 'moderate',
+  yarnVariant: YarnVariant = 'classic'
 ): Promise<SyncResult> {
   let output = '';
   let command = '';
@@ -143,6 +144,10 @@ export async function runAuditFix(
       break;
 
     case 'yarn':
+      if (yarnVariant === 'berry') {
+        core.info(`[SyncMyDep] Yarn Berry uses 'yarn npm audit' for vulnerability scanning; automated audit fix is not supported. Skipping audit fix step.`);
+        return { success: true, output: '' };
+      }
       command = 'yarn';
       args = ['audit', '--fix'];
       break;

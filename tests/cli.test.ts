@@ -34,6 +34,7 @@ describe('CLI helpers & execution', () => {
     (workspace.sanitizeWorkspaceLockfiles as jest.Mock).mockReturnValue([]);
     (detector.detectPackageManager as jest.Mock).mockReturnValue('npm');
     (detector.checkPackageJsonExists as jest.Mock).mockReturnValue(true);
+    (detector.checkGitRepository as jest.Mock).mockResolvedValue(true);
     (detector.inspectAudit as jest.Mock).mockResolvedValue({ total: 0, summary: {}, raw: {} });
     (fixer.syncLockfile as jest.Mock).mockResolvedValue({ success: true, output: '' });
     (fixer.runAuditFix as jest.Mock).mockResolvedValue({ success: true, output: '' });
@@ -78,6 +79,14 @@ describe('CLI helpers & execution', () => {
 
     test('exits 1 when package manifest is missing', async () => {
       (detector.checkPackageJsonExists as jest.Mock).mockReturnValue(false);
+
+      await runCli();
+
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    test('exits 1 when directory is not an initialized git repo', async () => {
+      (detector.checkGitRepository as jest.Mock).mockResolvedValue(false);
 
       await runCli();
 

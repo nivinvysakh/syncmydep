@@ -94263,6 +94263,14 @@ function checkPackageJsonExists(workspaceDir, pm = 'npm') {
     return external_fs_.existsSync(external_path_.join(workspaceDir, 'package.json'));
 }
 /**
+ * Checks if the specified directory is inside an initialized Git repository.
+ */
+async function checkGitRepository(workspaceDir) {
+    const options = { cwd: workspaceDir, silent: true, ignoreReturnCode: true };
+    const exitCode = await exec.exec('git', ['rev-parse', '--is-inside-work-tree'], options);
+    return exitCode === 0;
+}
+/**
  * Gets primary lockfile name associated with a package manager.
  */
 function getLockfileName(pm) {
@@ -94574,7 +94582,7 @@ async function syncLockfile(workspaceDir, pm, yarnVariant = 'classic') {
 /**
  * Runs security audit fix commands if available for the package manager.
  */
-async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
+async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate', yarnVariant = 'classic') {
     let output = '';
     let command = '';
     let args = [];
@@ -94588,6 +94596,10 @@ async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
             args = ['audit', '--fix=update'];
             break;
         case 'yarn':
+            if (yarnVariant === 'berry') {
+                lib_core.info(`[SyncMyDep] Yarn Berry uses 'yarn npm audit' for vulnerability scanning; automated audit fix is not supported. Skipping audit fix step.`);
+                return { success: true, output: '' };
+            }
             command = 'yarn';
             args = ['audit', '--fix'];
             break;
@@ -99262,7 +99274,7 @@ async function rebaseAndRedoProcess(options) {
     // 4. Run audit fix
     let fixedAudit = false;
     if (fixAuditOption) {
-        const auditResult = await runAuditFix(workspaceDir, pm, auditLevel);
+        const auditResult = await runAuditFix(workspaceDir, pm, auditLevel, yarnVariant);
         fixedAudit = auditResult.success;
         auditAfter = await inspectAudit(workspaceDir, pm);
     }
@@ -99593,7 +99605,7 @@ async function run() {
             }
             let fixedAudit = false;
             if (fixAuditOption) {
-                const auditResult = await runAuditFix(workspaceDir, pm, auditLevel);
+                const auditResult = await runAuditFix(workspaceDir, pm, auditLevel, yarnVariant);
                 fixedAudit = auditResult.success;
                 auditAfter = await inspectAudit(workspaceDir, pm);
             }
@@ -99683,7 +99695,7 @@ async function run() {
         }
         let fixedAudit = false;
         if (fixAuditOption && !checkOnly) {
-            const auditResult = await runAuditFix(workspaceDir, pm, auditLevel);
+            const auditResult = await runAuditFix(workspaceDir, pm, auditLevel, yarnVariant);
             fixedAudit = auditResult.success;
             auditAfter = await inspectAudit(workspaceDir, pm);
         }

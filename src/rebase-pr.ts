@@ -242,7 +242,7 @@ export async function rebaseAndRedoProcess(
   // 4. Run audit fix
   let fixedAudit = false;
   if (fixAuditOption) {
-    const auditResult = await runAuditFix(workspaceDir, pm, auditLevel);
+    const auditResult = await runAuditFix(workspaceDir, pm, auditLevel, yarnVariant);
     fixedAudit = auditResult.success;
     auditAfter = await inspectAudit(workspaceDir, pm);
   }
