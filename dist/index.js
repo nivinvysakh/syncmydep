@@ -94477,6 +94477,8 @@ async function inspectAudit(workspaceDir, pm) {
 ;// CONCATENATED MODULE: ./src/fixer.ts
 
 
+
+
 /**
  * Runs the appropriate command to synchronize the lockfile without running build scripts.
  */
@@ -94527,9 +94529,11 @@ async function syncLockfile(workspaceDir, pm, yarnVariant = 'classic') {
         }
     };
     const exitCode = await lib_exec.exec(command, args, options);
+    const lockfilePath = external_path_.join(workspaceDir, 'package-lock.json');
     // Fallback for npm (e.g. monorepo workspaces where initial package-lock.json does not yet exist)
-    if (exitCode !== 0 && pm === 'npm') {
+    if (pm === 'npm' && (exitCode !== 0 || !external_fs_.existsSync(lockfilePath))) {
         lib_core.info('[SyncMyDep] Retrying npm synchronization with npm install --ignore-scripts --no-audit --no-fund...');
+        output = '';
         const retryCode = await lib_exec.exec('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund'], options);
         return {
             success: retryCode === 0,

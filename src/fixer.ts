@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import * as exec from '@actions/exec';
 import * as core from '@actions/core';
 import {
@@ -70,10 +72,12 @@ export async function syncLockfile(
   };
 
   const exitCode = await exec.exec(command, args, options);
+  const lockfilePath = path.join(workspaceDir, 'package-lock.json');
 
   // Fallback for npm (e.g. monorepo workspaces where initial package-lock.json does not yet exist)
-  if (exitCode !== 0 && pm === 'npm') {
+  if (pm === 'npm' && (exitCode !== 0 || !fs.existsSync(lockfilePath))) {
     core.info('[SyncMyDep] Retrying npm synchronization with npm install --ignore-scripts --no-audit --no-fund...');
+    output = '';
     const retryCode = await exec.exec('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund'], options);
     return {
       success: retryCode === 0,
