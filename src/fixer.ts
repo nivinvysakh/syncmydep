@@ -58,6 +58,7 @@ export async function syncLockfile(
   const options = {
     cwd: workspaceDir,
     ignoreReturnCode: true,
+    silent: process.env.SYNCMYDEP_SILENT === 'true',
     listeners: {
       stdout: (data: Buffer) => {
         output += data.toString();
@@ -140,6 +141,7 @@ export async function runAuditFix(
   const options = {
     cwd: workspaceDir,
     ignoreReturnCode: true,
+    silent: process.env.SYNCMYDEP_SILENT === 'true',
     listeners: {
       stdout: (data: Buffer) => {
         output += data.toString();
@@ -207,6 +209,7 @@ export async function runDedupe(
   const options = {
     cwd: workspaceDir,
     ignoreReturnCode: true,
+    silent: process.env.SYNCMYDEP_SILENT === 'true',
     listeners: {
       stdout: (data: Buffer) => {
         output += data.toString();

@@ -4,4 +4,5 @@ node_modules/
 coverage/
 tests/
 *.log
+log_docker_dump.md
 .DS_Store

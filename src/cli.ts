@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import {
   detectPackageManager,
@@ -21,7 +22,88 @@ export function parseBool(val: string | undefined, defaultVal: boolean): boolean
   return val.toLowerCase() === 'true' || val === '1';
 }
 
+function cleanLogOutput(raw: string): string {
+  if (!raw || !raw.trim()) return '_No output reported._';
+  return '```text\n' + raw.trim() + '\n```';
+}
+
+export function generateDockerDumpMarkdown(data: {
+  workspaceDir: string;
+  pm: string;
+  yarnVariant?: string;
+  isMonorepo: boolean;
+  monorepoType?: string;
+  packageCount?: number;
+  syncSuccess: boolean;
+  syncLog: string;
+  auditBefore: AuditInspectionResult | null;
+  auditAfter: AuditInspectionResult | null;
+  auditFixLog: string;
+  dedupeLog: string;
+  integritySuccess: boolean;
+  integrityLog: string;
+  changedFiles: string[];
+  checkOnly: boolean;
+}): string {
+  const timestamp = new Date().toISOString();
+  const vulnsBefore = data.auditBefore?.total ?? 0;
+  const vulnsAfter = data.auditAfter?.total ?? 0;
+  const vulnsFixed = Math.max(0, vulnsBefore - vulnsAfter);
+
+  return `# 🔄 SyncMyDep Execution Log Dump
+
+> Generated on \`${timestamp}\` during local runner execution.
+
+---
+
+## 📋 Environment Overview
+- **Workspace Directory**: \`${data.workspaceDir}\`
+- **Package Manager**: \`${data.pm}${data.yarnVariant ? ` (${data.yarnVariant})` : ''}\`
+- **Workspace Type**: ${data.isMonorepo ? `\`Monorepo (${data.monorepoType}, ${data.packageCount} packages)\`` : '`Single Package`'}
+- **Mode**: ${data.checkOnly ? '`Check-Only (CI Linter)`' : '`Full Auto-Fix & Sync`'}
+
+---
+
+## 📊 Summary of Results
+| Metric | Status / Result |
+| :--- | :--- |
+| **Lockfile Sync** | ${data.syncSuccess ? '✅ Successful' : '❌ Issues Encountered'} |
+| **Integrity Check** | ${data.integritySuccess ? '✅ Verified' : '⚠️ Warning / Issues'} |
+| **Vulnerabilities Found** | \`${vulnsBefore}\` |
+| **Vulnerabilities After Fix** | \`${vulnsAfter}\` ${vulnsFixed > 0 ? `(🎉 Patched ${vulnsFixed})` : ''} |
+| **Files Modified** | ${data.changedFiles.length > 0 ? data.changedFiles.map((f) => `\`${f}\``).join(', ') : '_None (Already in sync)_'} |
+
+---
+
+## 🔄 Lockfile Synchronization Logs
+${cleanLogOutput(data.syncLog)}
+
+---
+
+## 🛡️ Security Audit & Fix Logs
+### Initial Audit Scan
+- Total Vulnerabilities: \`${vulnsBefore}\`
+${data.auditBefore ? `\`\`\`json\n${JSON.stringify(data.auditBefore.summary, null, 2)}\n\`\`\`` : '_Scan skipped_'}
+
+### Audit Fix Output
+${cleanLogOutput(data.auditFixLog)}
+
+---
+
+## 🧹 Lockfile Deduplication Logs
+${cleanLogOutput(data.dedupeLog)}
+
+---
+
+## 🔍 Lockfile Integrity Verification Logs
+${cleanLogOutput(data.integrityLog)}
+`;
+}
+
 export async function runCli(): Promise<void> {
+  // Ensure sub-commands don't dump hundreds of lines of noise into stdout
+  process.env.SYNCMYDEP_SILENT = 'true';
+
   const workingDir = process.env.INPUT_WORKING_DIRECTORY || process.cwd();
   const workspaceDir = path.resolve(process.cwd(), workingDir);
 
@@ -57,6 +139,10 @@ export async function runCli(): Promise<void> {
 
   let auditBefore: AuditInspectionResult | null = null;
   let auditAfter: AuditInspectionResult | null = null;
+  let syncSuccess = true;
+  let syncLog = '';
+  let auditFixLog = '';
+  let dedupeLog = '';
 
   if (fixAuditOption) {
     auditBefore = await inspectAudit(workspaceDir, pm);
@@ -68,20 +154,21 @@ export async function runCli(): Promise<void> {
   if (syncLockfileOption) {
     console.log(`🔄 Syncing lockfile using ${pm}...`);
     const syncRes = await syncLockfile(workspaceDir, pm, yarnVariant);
-    if (!syncRes.success) {
-      console.warn(`⚠️  Warning: Lockfile sync command reported issues:\n${syncRes.output}`);
-    }
+    syncSuccess = syncRes.success;
+    syncLog = syncRes.output;
   }
 
   if (fixAuditOption && !checkOnly) {
     console.log(`🛡️  Running audit fix (${auditLevel})...`);
-    await runAuditFix(workspaceDir, pm, auditLevel);
+    const auditRes = await runAuditFix(workspaceDir, pm, auditLevel);
+    auditFixLog = auditRes?.output ?? '';
     auditAfter = await inspectAudit(workspaceDir, pm);
   }
 
   if (dedupeOption && !checkOnly) {
     console.log(`🧹 Deduplicating dependencies...`);
-    await runDedupe(workspaceDir, pm, yarnVariant);
+    const dedupeRes = await runDedupe(workspaceDir, pm, yarnVariant);
+    dedupeLog = dedupeRes?.output ?? '';
   }
 
   const integrity = await verifyLockfileIntegrity(workspaceDir, pm);
@@ -93,11 +180,40 @@ export async function runCli(): Promise<void> {
 
   const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
 
+  // Write markdown dump file
+  const dumpMarkdown = generateDockerDumpMarkdown({
+    workspaceDir,
+    pm,
+    yarnVariant,
+    isMonorepo: workspaceInfo.isMonorepo,
+    monorepoType: workspaceInfo.type,
+    packageCount: workspaceInfo.packages.length,
+    syncSuccess,
+    syncLog,
+    auditBefore,
+    auditAfter,
+    auditFixLog,
+    dedupeLog,
+    integritySuccess: integrity.success,
+    integrityLog: integrity.output,
+    changedFiles,
+    checkOnly
+  });
+
+  const dumpFilePath = path.join(workspaceDir, 'log_docker_dump.md');
+  try {
+    fs.writeFileSync(dumpFilePath, dumpMarkdown, 'utf-8');
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.warn(`⚠️  Could not write log_docker_dump.md: ${errMsg}`);
+  }
+
   console.log('=============================================================');
 
   if (checkOnly) {
     if (!hasChanges && (!auditBefore || auditBefore.total === 0)) {
       console.log('✅ Check Passed: All dependencies and lockfiles are clean!');
+      console.log(`📄 Detailed log saved to: log_docker_dump.md`);
       console.log('=============================================================\n');
       process.exit(0);
     }
@@ -109,6 +225,7 @@ export async function runCli(): Promise<void> {
     if (auditBefore && auditBefore.total > 0) {
       console.error(`🛡️  Vulnerabilities: ${auditBefore.total} detected`);
     }
+    console.log(`📄 Detailed log saved to: log_docker_dump.md`);
     console.log('=============================================================\n');
     process.exit(1);
   }
@@ -122,13 +239,16 @@ export async function runCli(): Promise<void> {
       console.log(`🛡️  Fixed ${auditBefore.total - auditAfter.total} vulnerabilities!`);
     }
   }
+
+  console.log(`📄 Detailed execution log saved to: log_docker_dump.md`);
   console.log('=============================================================\n');
   process.exit(0);
 }
 
-if (require.main === module) {
+if (process.env.JEST_WORKER_ID === undefined) {
   runCli().catch((err) => {
     console.error('\n❌ Fatal CLI Error:', err);
     process.exit(1);
   });
 }
+

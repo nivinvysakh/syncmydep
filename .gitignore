@@ -3,3 +3,4 @@ node_modules/
 *.log
 .DS_Store
 coverage/
+log_docker_dump.md

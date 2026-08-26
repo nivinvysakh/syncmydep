@@ -94516,6 +94516,7 @@ async function syncLockfile(workspaceDir, pm, yarnVariant = 'classic') {
     const options = {
         cwd: workspaceDir,
         ignoreReturnCode: true,
+        silent: process.env.SYNCMYDEP_SILENT === 'true',
         listeners: {
             stdout: (data) => {
                 output += data.toString();
@@ -94582,6 +94583,7 @@ async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
     const options = {
         cwd: workspaceDir,
         ignoreReturnCode: true,
+        silent: process.env.SYNCMYDEP_SILENT === 'true',
         listeners: {
             stdout: (data) => {
                 output += data.toString();
@@ -94636,6 +94638,7 @@ async function runDedupe(workspaceDir, pm, yarnVariant = 'classic') {
     const options = {
         cwd: workspaceDir,
         ignoreReturnCode: true,
+        silent: process.env.SYNCMYDEP_SILENT === 'true',
         listeners: {
             stdout: (data) => {
                 output += data.toString();

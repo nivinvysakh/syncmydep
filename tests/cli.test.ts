@@ -1,4 +1,4 @@
-import { parseBool, runCli } from '../src/cli';
+import { parseBool, runCli, generateDockerDumpMarkdown } from '../src/cli';
 import * as detector from '../src/detector';
 import * as fixer from '../src/fixer';
 import * as workspace from '../src/workspace';
@@ -35,6 +35,8 @@ describe('CLI helpers & execution', () => {
     (detector.checkPackageJsonExists as jest.Mock).mockReturnValue(true);
     (detector.inspectAudit as jest.Mock).mockResolvedValue({ total: 0, summary: {}, raw: {} });
     (fixer.syncLockfile as jest.Mock).mockResolvedValue({ success: true, output: '' });
+    (fixer.runAuditFix as jest.Mock).mockResolvedValue({ success: true, output: '' });
+    (fixer.runDedupe as jest.Mock).mockResolvedValue({ success: true, output: '' });
     (fixer.verifyLockfileIntegrity as jest.Mock).mockResolvedValue({ success: true, output: '' });
     (fixer.getGitStatus as jest.Mock).mockResolvedValue({ hasChanges: false, changedFiles: [] });
   });
@@ -112,6 +114,32 @@ describe('CLI helpers & execution', () => {
       expect(fixer.runAuditFix).toHaveBeenCalled();
       expect(fixer.runDedupe).toHaveBeenCalled();
       expect(mockExit).toHaveBeenCalledWith(0);
+    });
+  });
+
+  describe('generateDockerDumpMarkdown helper', () => {
+    test('generates complete markdown report', () => {
+      const md = generateDockerDumpMarkdown({
+        workspaceDir: '/dummy/workspace',
+        pm: 'npm',
+        isMonorepo: false,
+        syncSuccess: true,
+        syncLog: 'up to date in 200ms',
+        auditBefore: { total: 5, summary: {}, raw: {} },
+        auditAfter: { total: 0, summary: {}, raw: {} },
+        auditFixLog: 'fixed 5 vulnerabilities',
+        dedupeLog: 'removed 2 packages',
+        integritySuccess: true,
+        integrityLog: 'verified',
+        changedFiles: ['package-lock.json'],
+        checkOnly: false
+      });
+
+      expect(md).toContain('# 🔄 SyncMyDep Execution Log Dump');
+      expect(md).toContain('`npm`');
+      expect(md).toContain('Patched 5');
+      expect(md).toContain('fixed 5 vulnerabilities');
+      expect(md).toContain('package-lock.json');
     });
   });
 });
