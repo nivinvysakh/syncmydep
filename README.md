@@ -165,7 +165,34 @@ jobs:
 
 ---
 
-### 4. 🐳 Running Locally with Docker
+### 4. 🐳 Running as a Container Action in GitHub Actions
+
+For environments where you prefer running directly inside the containerized image from GitHub Container Registry (GHCR):
+
+```yaml
+name: Sync Dependencies (Container)
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run SyncMyDep from GHCR
+        uses: docker://ghcr.io/nivinvysakh/syncmydep:latest
+        env:
+          INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_SYNC_LOCKFILE: "true"
+          INPUT_FIX_AUDIT: "true"
+```
+
+---
+
+### 5. 💻 Running Locally on Developer Laptops (Docker CLI)
 
 You can run SyncMyDep directly on your local machine without installing Bun, Deno, pnpm, or Yarn:
 
@@ -175,12 +202,6 @@ docker run --rm -v "$(pwd)":/workspace ghcr.io/nivinvysakh/syncmydep:latest
 
 # Or run in check-only CI verification mode
 docker run --rm -v "$(pwd)":/workspace -e INPUT_CHECK_ONLY="true" ghcr.io/nivinvysakh/syncmydep:latest
-```
-
-Or build and run locally:
-```bash
-docker build -t syncmydep .
-docker run --rm -v "$(pwd)":/workspace syncmydep
 ```
 
 Or using **Docker Compose**:
