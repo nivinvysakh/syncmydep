@@ -31965,8 +31965,14 @@ async function runCli() {
         if (auditBefore && auditBefore.total > 0) {
             console.error(`🛡️  Vulnerabilities: ${auditBefore.total} detected`);
         }
+        console.warn('\n⚠️  ACTION REQUIRED:');
+        console.warn('   Your repository has uncommitted lockfile drift or security issues.');
+        console.warn('   Please synchronize and commit your changes, then rerun:');
+        console.warn('   1. Auto-fix: `docker run --rm -v "$(pwd)":/workspace syncmydep:latest`');
+        console.warn('   2. Commit:   `git add . && git commit -m "chore(deps): sync lockfile"`');
+        console.warn('   3. Re-run:   `docker run --rm -v "$(pwd)":/workspace -e INPUT_CHECK_ONLY="true" syncmydep:latest`');
         if (dumpSaved) {
-            console.log(`📄 Detailed log saved to: log_docker_dump.md`);
+            console.log(`\n📄 Detailed log saved to: log_docker_dump.md`);
         }
         console.log('=============================================================\n');
         process.exit(1);
@@ -31980,6 +31986,9 @@ async function runCli() {
         if (auditBefore && auditAfter && auditBefore.total > auditAfter.total) {
             console.log(`🛡️  Fixed ${auditBefore.total - auditAfter.total} vulnerabilities!`);
         }
+        console.log('\n💡 Don\'t forget to commit your updated files:');
+        console.log(`   git add ${changedFiles.join(' ')}`);
+        console.log(`   git commit -m "chore(deps): synchronize lockfiles and dependencies"`);
     }
     if (dumpSaved) {
         console.log(`📄 Detailed execution log saved to: log_docker_dump.md`);
