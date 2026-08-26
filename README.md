@@ -4,11 +4,12 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/nivinvysakh/syncmydep/blob/main/LICENSE)
 [![GitHub Release](https://img.shields.io/github/v/release/nivinvysakh/syncmydep?color=purple&label=latest%20release)](https://github.com/nivinvysakh/syncmydep/releases/latest)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
+[![Docker Image](https://img.shields.io/badge/Docker-GHCR-blue?logo=docker)](https://github.com/nivinvysakh/syncmydep/pkgs/container/syncmydep)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 [![Automated Dependency Sync](https://img.shields.io/badge/SyncMyDep-Action-purple.svg)](https://github.com/nivinvysakh/syncmydep)
 
-> A high-performance, TypeScript-powered GitHub Action that detects package manifest and lockfile desynchronization or vulnerabilities, auto-fixes them across **npm**, **pnpm**, **yarn (v1 & berry)**, **bun**, and **deno** (including monorepos), and opens Pull Requests or commits fixes directly.
+> A high-performance, TypeScript-powered GitHub Action and multi-arch Docker container that detects package manifest and lockfile desynchronization or vulnerabilities, auto-fixes them across **npm**, **pnpm**, **yarn (v1 & berry)**, **bun**, and **deno** (including monorepos), and opens Pull Requests or commits fixes directly.
 
 <br clear="right"/>
 
@@ -23,13 +24,15 @@
   - **bun** (`bun.lock` / `bun.lockb`)
   - **deno** (`deno.lock` / `deno.json`)
 - 🏢 **Monorepo & Workspace Auto-Detection**: Automatically recognizes multi-package repositories powered by **Turborepo**, **pnpm workspaces**, **Lerna**, **Nx**, and standard **npm/yarn/bun workspaces**.
+- 🧹 **Workspace Sanitation (Ghost Lockfile Cleanup)**: Automatically identifies and purges rogue nested lockfiles inside individual sub-package directories that break hoisting and dependency resolution.
+- 🐳 **Multi-Arch Docker Runner (`ghcr.io`)**: Run locally or in custom CI pipelines via the official multi-architecture container (`linux/amd64` and Apple Silicon `linux/arm64`).
 - 🚦 **Check-Only / CI Gating Mode**: Dry-run mode (`check-only: true`) that emits GitHub step annotations and exits with code `1` if desynchronization or security vulnerabilities are detected.
 - ⚡ **Direct Push vs. PR Modes**: Optionally push fixes directly to active PR branches in place (`direct-push: true` or on `pull_request` triggers) without generating PR clutter.
 - 💬 **On-Demand PR Comments (`syncdep`)**: Comment `syncdep` on any open Pull Request to trigger an instant dependency sync and push directly to that PR branch with `👀` & `🚀` status reactions.
 - 🔒 **Repository Owner Authorization**: Built-in security that ensures only repository owners can trigger comment-based branch modifications.
 - ⚙️ **Config File Support**: Configure custom commit conventions, branch names, and rules in `.syncmydep.yml`.
-- 📊 **Detailed Dependency Diff Reports**: Markdown tables highlighting added (`✨`), upgraded (`🔄`), and removed (`🗑️`) packages with exact before-and-after versions.
-- ⚡ **Zero-Dependency Fast Runner**: Standalone compiled bundle using `@vercel/ncc` with no runtime `npm install` overhead on runners.
+- 📊 **Detailed Dependency Diff Reports**: Markdown tables and local `log_docker_dump.md` logs highlighting added (`✨`), upgraded (`🔄`), and removed (`🗑️`) packages with exact versions.
+- ⚡ **Zero-Dependency Fast Runner**: Standalone compiled bundle using `@vercel/ncc` with Node 22 LTS support.
 
 
 ## 🍃 Demo Video
@@ -156,6 +159,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: nivinvysakh/syncmydep@v1
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          check-only: "true"
 ```
 
 ---
