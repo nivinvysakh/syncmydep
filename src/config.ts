@@ -81,6 +81,7 @@ function normalizeConfig(raw: Record<string, unknown>): SyncMyDepConfig {
   const labels = getVal<string[] | string>('prLabels', 'pr-labels', 'pr_labels');
   const assignees = getVal<string[] | string>('prAssignees', 'pr-assignees', 'pr_assignees');
   const reviewers = getVal<string[] | string>('prReviewers', 'pr-reviewers', 'pr_reviewers');
+  const ignorePackages = getVal<string[] | string>('ignorePackages', 'ignore-packages', 'ignore_packages', 'ignore');
 
   const normalizeList = (val: string[] | string | undefined): string[] | undefined => {
     if (!val) return undefined;
@@ -88,6 +89,15 @@ function normalizeConfig(raw: Record<string, unknown>): SyncMyDepConfig {
     if (typeof val === 'string') return val.split(',').map((s) => s.trim()).filter(Boolean);
     return undefined;
   };
+
+  const rawMonorepo = getVal<Record<string, unknown>>('monorepo', 'workspace');
+  let monorepoConfig: SyncMyDepConfig['monorepo'] = undefined;
+  if (rawMonorepo && typeof rawMonorepo === 'object') {
+    monorepoConfig = {
+      rootOnly: Boolean(rawMonorepo.rootOnly ?? rawMonorepo['root-only'] ?? rawMonorepo.root_only),
+      ignore: normalizeList(rawMonorepo.ignore as string[] | string | undefined)
+    };
+  }
 
   return {
     packageManager: getVal<string>('packageManager', 'package-manager', 'package_manager'),
@@ -97,6 +107,14 @@ function normalizeConfig(raw: Record<string, unknown>): SyncMyDepConfig {
     auditLevel: getVal<string>('auditLevel', 'audit-level', 'audit_level'),
     checkOnly: getVal<boolean>('checkOnly', 'check-only', 'check_only'),
     directPush: getVal<boolean>('directPush', 'direct-push', 'direct_push'),
+    dedupe: getVal<boolean>('dedupe', 'de-dupe'),
+    ignorePackages: normalizeList(ignorePackages),
+    baseBranch: getVal<string>('baseBranch', 'base-branch', 'base_branch'),
+    prDraft: getVal<boolean>('prDraft', 'pr-draft', 'pr_draft', 'draft'),
+    stepSummary: getVal<boolean>('stepSummary', 'step-summary', 'step_summary', 'jobSummary', 'job-summary'),
+    prHeader: getVal<string>('prHeader', 'pr-header', 'pr_header', 'customHeader', 'custom-header'),
+    prFooter: getVal<string>('prFooter', 'pr-footer', 'pr_footer', 'customFooter', 'custom-footer'),
+    monorepo: monorepoConfig,
     prBranch: getVal<string>('prBranch', 'pr-branch', 'pr_branch'),
     prTitle: getVal<string>('prTitle', 'pr-title', 'pr_title'),
     commitMessage: getVal<string>('commitMessage', 'commit-message', 'commit_message'),

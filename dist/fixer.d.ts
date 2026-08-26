@@ -8,6 +8,10 @@ export declare function syncLockfile(workspaceDir: string, pm: PackageManager, y
  */
 export declare function runAuditFix(workspaceDir: string, pm: PackageManager, auditLevel?: string): Promise<SyncResult>;
 /**
+ * Runs lockfile deduplication to clean up duplicate sub-dependencies.
+ */
+export declare function runDedupe(workspaceDir: string, pm: PackageManager, yarnVariant?: YarnVariant): Promise<SyncResult>;
+/**
  * Inspects git status to identify modified manifest and lockfiles in single-package or monorepo setups.
  */
 export declare function getGitStatus(workspaceDir: string): Promise<GitStatusResult>;

@@ -328,6 +328,7 @@ export async function createOrUpdatePullRequest({
   headBranch,
   title,
   body,
+  draft = false,
   labels = [],
   assignees = [],
   reviewers = [],
@@ -369,7 +370,7 @@ export async function createOrUpdatePullRequest({
       body,
     });
   } else {
-    core.info(`[SyncMyDep] Creating new Pull Request...`);
+    core.info(`[SyncMyDep] Creating new Pull Request${draft ? ' (Draft)' : ''}...`);
     const { data: newPr } = await octokit.rest.pulls.create({
       owner,
       repo,
@@ -377,6 +378,7 @@ export async function createOrUpdatePullRequest({
       body,
       head: headBranch,
       base: baseBranch,
+      draft: Boolean(draft),
     });
 
     prNumber = newPr.number;

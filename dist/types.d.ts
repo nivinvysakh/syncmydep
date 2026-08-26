@@ -37,6 +37,17 @@ export interface SyncMyDepConfig {
     auditLevel?: string;
     checkOnly?: boolean;
     directPush?: boolean;
+    dedupe?: boolean;
+    ignorePackages?: string[];
+    baseBranch?: string;
+    prDraft?: boolean;
+    stepSummary?: boolean;
+    prHeader?: string;
+    prFooter?: string;
+    monorepo?: {
+        rootOnly?: boolean;
+        ignore?: string[];
+    };
     prBranch?: string;
     prTitle?: string;
     commitMessage?: string;
@@ -75,10 +86,14 @@ export interface SummaryOptions {
     dependencyDiffs?: DependencyDiff[];
     syncedLockfile: boolean;
     fixedAudit: boolean;
+    dedupeRun?: boolean;
+    dedupeSuccess?: boolean;
     auditBefore: AuditInspectionResult | null;
     auditAfter: AuditInspectionResult | null;
     lockfileVerified?: boolean;
     buildResult?: BuildVerificationResult | null;
+    prHeader?: string;
+    prFooter?: string;
 }
 export interface CommentSummaryOptions extends SummaryOptions {
     branch: string;
@@ -102,6 +117,7 @@ export interface CreateOrUpdatePullRequestParams {
     headBranch: string;
     title: string;
     body: string;
+    draft?: boolean;
     labels?: string[];
     assignees?: string[];
     reviewers?: string[];

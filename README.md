@@ -170,8 +170,13 @@ package-manager: "auto"
 sync-lockfile: true
 fix-audit: true
 audit-level: "moderate"
+dedupe: true # 🧹 Remove duplicate transitive dependencies from lockfile
 check-only: false
 direct-push: false
+
+# PR Settings
+base-branch: "main"
+pr-draft: false
 pr-branch: "syncmydep/dependency-fix"
 pr-title: "chore(deps): synchronize dependencies"
 commit-message: "chore(deps): update lockfile"
@@ -180,6 +185,22 @@ pr-labels:
   - "automated-pr"
 comment-trigger: "syncdep"
 require-owner: true
+
+# Verification & Performance
+verify-lockfile: true
+run-build: "npm run build"
+fail-on-build-error: false
+auto-merge: false
+cache: true
+step-summary: true
+
+# Package Filters & Monorepos
+ignore-packages:
+  - "@internal/legacy-sdk"
+monorepo:
+  root-only: false
+  ignore:
+    - "packages/deprecated"
 ```
 
 ---
@@ -195,14 +216,21 @@ require-owner: true
 | `sync-lockfile`       | Synchronize lockfile with package specifications                                     |    No    | `true`                                                      |
 | `fix-audit`           | Run security vulnerability auto-fix                                                  |    No    | `true`                                                      |
 | `audit-level`         | Minimum vulnerability severity: `low`, `moderate`, `high`, `critical`                |    No    | `moderate`                                                  |
+| `dedupe`              | Automatically deduplicate transitive dependencies in lockfile                       |    No    | `false`                                                     |
 | `check-only`          | Dry-run CI gating mode that emits step annotations and exits with code `1` on desync |    No    | `false`                                                     |
 | `direct-push`         | Commit and push directly to open PR branch on `pull_request` triggers                |    No    | `false`                                                     |
+| `base-branch`         | Custom base branch to target for PRs instead of default branch                       |    No    | `""`                                                        |
+| `pr-draft`            | Create the Pull Request as a Draft PR (`"true"` / `"false"`)                         |    No    | `false`                                                     |
 | `pr-branch`           | Branch name to push fixes to                                                         |    No    | `syncmydep/dependency-fix`                                  |
 | `pr-title`            | Title for the generated Pull Request                                                 |    No    | `chore(deps): synchronize package.json and lockfile issues` |
 | `commit-message`      | Commit message for the updates                                                       |    No    | `chore(deps): synchronize package.json and lockfile issues` |
 | `pr-labels`           | Comma-separated labels to attach to the PR                                           |    No    | `dependencies, automated-pr`                                |
 | `pr-assignees`        | Comma-separated usernames to assign                                                  |    No    | `""`                                                        |
 | `pr-reviewers`        | Comma-separated usernames to request review from                                     |    No    | `""`                                                        |
+| `pr-header`           | Custom Markdown text prepended to the generated PR description                       |    No    | `""`                                                        |
+| `pr-footer`           | Custom Markdown text appended to the generated PR description                        |    No    | `""`                                                        |
+| `ignore-packages`     | Comma-separated package names to ignore from sync or audit updates                   |    No    | `""`                                                        |
+| `step-summary`        | Render visual markdown dashboard to GitHub Actions Step Summary                      |    No    | `true`                                                      |
 | `comment-trigger`     | Keyword that triggers sync on a PR comment                                           |    No    | `syncdep`                                                   |
 | `require-owner`       | Restrict comment trigger commands strictly to repository owners                      |    No    | `true`                                                      |
 | `verify-lockfile`     | Run dry-run frozen installation check on generated lockfile                          |    No    | `true`                                                      |

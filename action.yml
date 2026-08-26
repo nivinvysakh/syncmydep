@@ -98,6 +98,34 @@ inputs:
     description: 'Whether to automatically restore and save package manager caches to accelerate runs ("true" or "false").'
     required: false
     default: 'true'
+  dedupe:
+    description: 'Whether to deduplicate lockfile dependencies to shrink file size ("true" or "false").'
+    required: false
+    default: 'false'
+  base-branch:
+    description: 'Custom base branch to target for PRs instead of default branch.'
+    required: false
+    default: ''
+  pr-draft:
+    description: 'Whether to create the Pull Request as a Draft PR ("true" or "false").'
+    required: false
+    default: 'false'
+  step-summary:
+    description: 'Whether to render visual markdown report to GitHub Step Summary ("true" or "false").'
+    required: false
+    default: 'true'
+  pr-header:
+    description: 'Custom Markdown text prepended to the generated PR description.'
+    required: false
+    default: ''
+  pr-footer:
+    description: 'Custom Markdown text appended to the generated PR description.'
+    required: false
+    default: ''
+  ignore-packages:
+    description: 'Comma-separated package names to ignore from sync or audit updates.'
+    required: false
+    default: ''
 
 outputs:
   changes-detected:

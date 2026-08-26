@@ -8,6 +8,7 @@ import {
   configureGitUser,
   checkoutBranch,
   commitAndPushChanges,
+  createOrUpdatePullRequest,
 } from "../src/git-pr";
 import { OctokitClient } from "../src/types";
 
@@ -271,6 +272,47 @@ describe("git-pr helpers", () => {
       expect.objectContaining({
         pullRequestId: "PR_node_123",
         mergeMethod: "SQUASH",
+      }),
+    );
+  });
+
+  test("createOrUpdatePullRequest creates draft PR when draft: true", async () => {
+    const mockList = jest.fn().mockResolvedValue({ data: [] });
+    const mockCreate = jest.fn().mockResolvedValue({
+      data: {
+        number: 55,
+        html_url: "https://github.com/owner/repo/pull/55",
+        node_id: "PR_55",
+      },
+    });
+
+    const octokit = {
+      rest: {
+        pulls: {
+          list: mockList,
+          create: mockCreate,
+        },
+      },
+    } as unknown as OctokitClient;
+
+    const result = await createOrUpdatePullRequest({
+      octokit,
+      owner: "owner",
+      repo: "repo",
+      baseBranch: "main",
+      headBranch: "syncmydep/test-branch",
+      title: "chore: update deps",
+      body: "markdown description",
+      draft: true,
+    });
+
+    expect(result.number).toBe(55);
+    expect(result.isNew).toBe(true);
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draft: true,
+        head: "syncmydep/test-branch",
+        base: "main",
       }),
     );
   });

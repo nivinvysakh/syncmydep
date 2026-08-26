@@ -118,4 +118,43 @@ describe('summary builder', () => {
     expect(summary).toContain('Lockfile Integrity Verification**: ✅ Passed');
     expect(summary).toContain('Build Smoke Test**: ✅ Passed (`npm run build`)');
   });
+
+  test('renders prHeader, prFooter, and dedupe in summary and comment', () => {
+    const summary = buildMarkdownSummary({
+      pm: 'npm',
+      changedFiles: ['package-lock.json'],
+      diffStat: '',
+      syncedLockfile: true,
+      fixedAudit: true,
+      dedupeRun: true,
+      dedupeSuccess: true,
+      auditBefore: null,
+      auditAfter: null,
+      prHeader: '⚠️ Custom Header Note',
+      prFooter: '📞 Custom Footer Note'
+    });
+
+    expect(summary).toContain('⚠️ Custom Header Note');
+    expect(summary).toContain('📞 Custom Footer Note');
+    expect(summary).toContain('Lockfile Deduplication**: ✅ Applied (sub-dependency trees optimized)');
+
+    const comment = buildCommentSummary({
+      pm: 'npm',
+      changedFiles: ['package-lock.json'],
+      diffStat: '',
+      syncedLockfile: true,
+      fixedAudit: true,
+      dedupeRun: true,
+      dedupeSuccess: true,
+      auditBefore: null,
+      auditAfter: null,
+      branch: 'main',
+      prHeader: '⚠️ Custom Comment Header',
+      prFooter: '📞 Custom Comment Footer'
+    });
+
+    expect(comment).toContain('⚠️ Custom Comment Header');
+    expect(comment).toContain('📞 Custom Comment Footer');
+    expect(comment).toContain('Lockfile Deduplication**: ✅ Applied');
+  });
 });

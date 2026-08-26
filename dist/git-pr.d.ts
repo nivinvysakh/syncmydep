@@ -38,4 +38,4 @@ export declare function enablePullRequestAutoMerge(octokit: OctokitClient, pullR
 /**
  * Creates or updates a GitHub Pull Request using Octokit.
  */
-export declare function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, headBranch, title, body, labels, assignees, reviewers, autoMerge, autoMergeMethod, }: CreateOrUpdatePullRequestParams): Promise<PullRequestResult>;
+export declare function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, headBranch, title, body, draft, labels, assignees, reviewers, autoMerge, autoMergeMethod, }: CreateOrUpdatePullRequestParams): Promise<PullRequestResult>;

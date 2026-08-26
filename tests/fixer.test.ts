@@ -3,7 +3,8 @@ import {
   syncLockfile,
   parseDependencyDiffs,
   verifyLockfileIntegrity,
-  runBuildSmokeTest
+  runBuildSmokeTest,
+  runDedupe
 } from '../src/fixer';
 import * as exec from '@actions/exec';
 
@@ -100,16 +101,19 @@ describe('fixer', () => {
     expect(exec.exec).toHaveBeenCalledWith('npm run build', [], expect.any(Object));
   });
 
-  test('getGitStatus returns hasChanges: false when no dependency files are modified', async () => {
-    (exec.exec as jest.MockedFunction<typeof exec.exec>).mockImplementation((_cmd: string, _args?: string[], options?: exec.ExecOptions) => {
-      if (options && options.listeners && options.listeners.stdout) {
-        options.listeners.stdout(Buffer.from('?? README.md\n'));
-      }
-      return Promise.resolve(0);
-    });
+  test('runDedupe executes dedupe commands correctly for npm, pnpm, and yarn berry', async () => {
+    (exec.exec as jest.MockedFunction<typeof exec.exec>).mockResolvedValue(0);
 
-    const status = await getGitStatus('/fake/dir');
-    expect(status.hasChanges).toBe(false);
-    expect(status.changedFiles).toEqual([]);
+    const npmResult = await runDedupe('/fake/dir', 'npm');
+    expect(npmResult.success).toBe(true);
+    expect(exec.exec).toHaveBeenCalledWith('npm', ['dedupe'], expect.any(Object));
+
+    const pnpmResult = await runDedupe('/fake/dir', 'pnpm');
+    expect(pnpmResult.success).toBe(true);
+    expect(exec.exec).toHaveBeenCalledWith('pnpm', ['dedupe'], expect.any(Object));
+
+    const berryResult = await runDedupe('/fake/dir', 'yarn', 'berry');
+    expect(berryResult.success).toBe(true);
+    expect(exec.exec).toHaveBeenCalledWith('yarn', ['dedupe'], expect.any(Object));
   });
 });

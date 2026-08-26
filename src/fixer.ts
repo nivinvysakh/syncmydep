@@ -159,6 +159,73 @@ export async function runAuditFix(
 }
 
 /**
+ * Runs lockfile deduplication to clean up duplicate sub-dependencies.
+ */
+export async function runDedupe(
+  workspaceDir: string,
+  pm: PackageManager,
+  yarnVariant: YarnVariant = 'classic'
+): Promise<SyncResult> {
+  let output = '';
+  let command = '';
+  let args: string[] = [];
+
+  switch (pm) {
+    case 'npm':
+      command = 'npm';
+      args = ['dedupe'];
+      break;
+
+    case 'pnpm':
+      command = 'pnpm';
+      args = ['dedupe'];
+      break;
+
+    case 'yarn':
+      command = 'yarn';
+      if (yarnVariant === 'berry') {
+        args = ['dedupe'];
+      } else {
+        // Classic yarn doesn't have a native built-in dedupe command, runs standard install
+        args = ['install', '--prefer-offline'];
+      }
+      break;
+
+    case 'bun':
+      command = 'bun';
+      args = ['install'];
+      break;
+
+    case 'deno':
+    default:
+      core.info(`[SyncMyDep] Deduplication is not applicable for ${pm}.`);
+      return { success: true, output: '' };
+  }
+
+  core.info(`[SyncMyDep] Running lockfile deduplication using ${command} ${args.join(' ')}...`);
+
+  const options = {
+    cwd: workspaceDir,
+    ignoreReturnCode: true,
+    listeners: {
+      stdout: (data: Buffer) => {
+        output += data.toString();
+      },
+      stderr: (data: Buffer) => {
+        output += data.toString();
+      }
+    }
+  };
+
+  const exitCode = await exec.exec(command, args, options);
+
+  return {
+    success: exitCode === 0,
+    output
+  };
+}
+
+/**
  * Inspects git status to identify modified manifest and lockfiles in single-package or monorepo setups.
  */
 export async function getGitStatus(workspaceDir: string): Promise<GitStatusResult> {

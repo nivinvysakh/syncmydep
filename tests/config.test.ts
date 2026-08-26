@@ -36,7 +36,20 @@ describe('config loader', () => {
       'run-build: "npm run build"',
       'fail-on-build-error: true',
       'auto-merge: true',
-      'auto-merge-method: squash'
+      'auto-merge-method: squash',
+      'dedupe: true',
+      'base-branch: develop',
+      'pr-draft: true',
+      'step-summary: true',
+      'pr-header: "### Custom Header Note"',
+      'pr-footer: "### Custom Footer Note"',
+      'ignore-packages:',
+      '  - lodash',
+      '  - axios',
+      'monorepo:',
+      '  root-only: false',
+      '  ignore:',
+      '    - packages/legacy'
     ].join('\n');
 
     fs.writeFileSync(path.join(tmpDir, '.syncmydep.yml'), yamlContent);
@@ -56,6 +69,15 @@ describe('config loader', () => {
     expect(config.failOnBuildError).toBe(true);
     expect(config.autoMerge).toBe(true);
     expect(config.autoMergeMethod).toBe('squash');
+    expect(config.dedupe).toBe(true);
+    expect(config.baseBranch).toBe('develop');
+    expect(config.prDraft).toBe(true);
+    expect(config.stepSummary).toBe(true);
+    expect(config.prHeader).toBe('### Custom Header Note');
+    expect(config.prFooter).toBe('### Custom Footer Note');
+    expect(config.ignorePackages).toEqual(['lodash', 'axios']);
+    expect(config.monorepo?.rootOnly).toBe(false);
+    expect(config.monorepo?.ignore).toEqual(['packages/legacy']);
   });
 
   test('loads and parses .syncmydeprc.json properly', () => {
