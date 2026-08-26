@@ -99513,7 +99513,7 @@ async function run() {
         const cacheOption = lib_core.getInput('cache') !== ''
             ? lib_core.getBooleanInput('cache')
             : fileConfig.cache ?? true;
-        const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
+        const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : ['dependencies', 'SyncMyDep'];
         const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
         const reviewers = reviewersInput ? reviewersInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
         const ignorePackages = ignorePackagesInput ? ignorePackagesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];

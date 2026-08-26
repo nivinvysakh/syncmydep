@@ -1,0 +1,40 @@
+# ===================================================================
+# 🔄 SyncMyDep Configuration (.syncmydep.yml)
+# https://github.com/nivinvysakh/syncmydep
+# ===================================================================
+
+# Package Manager: 'auto' | 'npm' | 'yarn' | 'pnpm' | 'bun' | 'deno'
+package-manager: npm
+
+# Synchronization & Security Fixes
+sync-lockfile: true
+fix-audit: true
+audit-level: moderate
+dedupe: true
+
+# Integrity & Build Verification
+verify-lockfile: true
+run-build: npm run typecheck
+fail-on-build-error: true
+
+# Pull Request Customization
+pr-branch: syncmydep/dependency-fix
+pr-title: 'chore(deps): synchronize lockfiles & resolve security vulnerabilities'
+commit-message: 'chore(deps): auto-sync lockfiles and fix dependency vulnerabilities'
+
+pr-labels:
+  - dependencies
+  - automated-pr
+  - SyncMyDep
+
+pr-assignees:
+  - nivinvysakh
+
+pr-header: '🚀 **SyncMyDep** detected package manifest updates, lockfile drift, or security advisories.'
+pr-footer: '🔒 Automatically generated and verified by **SyncMyDep**.'
+
+# Automation & Workflow
+auto-merge: false
+pr-draft: false
+step-summary: false
+cache: true
