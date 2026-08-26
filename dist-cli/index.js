@@ -31859,9 +31859,11 @@ async function runCli() {
         changedFiles,
         checkOnly
     });
+    let dumpSaved = false;
     const dumpFilePath = external_path_.join(workspaceDir, 'log_docker_dump.md');
     try {
         external_fs_.writeFileSync(dumpFilePath, dumpMarkdown, 'utf-8');
+        dumpSaved = true;
     }
     catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -31871,7 +31873,9 @@ async function runCli() {
     if (checkOnly) {
         if (!hasChanges && (!auditBefore || auditBefore.total === 0)) {
             console.log('✅ Check Passed: All dependencies and lockfiles are clean!');
-            console.log(`📄 Detailed log saved to: log_docker_dump.md`);
+            if (dumpSaved) {
+                console.log(`📄 Detailed log saved to: log_docker_dump.md`);
+            }
             console.log('=============================================================\n');
             process.exit(0);
         }
@@ -31882,7 +31886,9 @@ async function runCli() {
         if (auditBefore && auditBefore.total > 0) {
             console.error(`🛡️  Vulnerabilities: ${auditBefore.total} detected`);
         }
-        console.log(`📄 Detailed log saved to: log_docker_dump.md`);
+        if (dumpSaved) {
+            console.log(`📄 Detailed log saved to: log_docker_dump.md`);
+        }
         console.log('=============================================================\n');
         process.exit(1);
     }
@@ -31896,7 +31902,9 @@ async function runCli() {
             console.log(`🛡️  Fixed ${auditBefore.total - auditAfter.total} vulnerabilities!`);
         }
     }
-    console.log(`📄 Detailed execution log saved to: log_docker_dump.md`);
+    if (dumpSaved) {
+        console.log(`📄 Detailed execution log saved to: log_docker_dump.md`);
+    }
     console.log('=============================================================\n');
     process.exit(0);
 }

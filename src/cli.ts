@@ -200,9 +200,11 @@ export async function runCli(): Promise<void> {
     checkOnly
   });
 
+  let dumpSaved = false;
   const dumpFilePath = path.join(workspaceDir, 'log_docker_dump.md');
   try {
     fs.writeFileSync(dumpFilePath, dumpMarkdown, 'utf-8');
+    dumpSaved = true;
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     console.warn(`⚠️  Could not write log_docker_dump.md: ${errMsg}`);
@@ -213,7 +215,9 @@ export async function runCli(): Promise<void> {
   if (checkOnly) {
     if (!hasChanges && (!auditBefore || auditBefore.total === 0)) {
       console.log('✅ Check Passed: All dependencies and lockfiles are clean!');
-      console.log(`📄 Detailed log saved to: log_docker_dump.md`);
+      if (dumpSaved) {
+        console.log(`📄 Detailed log saved to: log_docker_dump.md`);
+      }
       console.log('=============================================================\n');
       process.exit(0);
     }
@@ -225,7 +229,9 @@ export async function runCli(): Promise<void> {
     if (auditBefore && auditBefore.total > 0) {
       console.error(`🛡️  Vulnerabilities: ${auditBefore.total} detected`);
     }
-    console.log(`📄 Detailed log saved to: log_docker_dump.md`);
+    if (dumpSaved) {
+      console.log(`📄 Detailed log saved to: log_docker_dump.md`);
+    }
     console.log('=============================================================\n');
     process.exit(1);
   }
@@ -240,7 +246,9 @@ export async function runCli(): Promise<void> {
     }
   }
 
-  console.log(`📄 Detailed execution log saved to: log_docker_dump.md`);
+  if (dumpSaved) {
+    console.log(`📄 Detailed execution log saved to: log_docker_dump.md`);
+  }
   console.log('=============================================================\n');
   process.exit(0);
 }
