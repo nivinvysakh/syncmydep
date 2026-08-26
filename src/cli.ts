@@ -25,7 +25,11 @@ export function parseBool(val: string | undefined, defaultVal: boolean): boolean
 
 function cleanLogOutput(raw: string): string {
   if (!raw || !raw.trim()) return '_No output reported._';
-  return '```text\n' + raw.trim() + '\n```';
+  const clean = raw
+    .replace(/\\x1b\[[0-9;]*[a-zA-Z]/g, '')
+    .replace(/\[0m|\[3[0-9]m/g, '')
+    .trim();
+  return '```text\n' + (clean || '_No output reported._') + '\n```';
 }
 
 export function generateDockerDumpMarkdown(data: {

@@ -12,7 +12,8 @@ export type WorkspaceType =
   | 'bun'
   | 'turbo'
   | 'lerna'
-  | 'nx';
+  | 'nx'
+  | 'deno';
 
 export interface WorkspaceInfo {
   isMonorepo: boolean;

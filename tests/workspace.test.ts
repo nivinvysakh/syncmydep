@@ -72,6 +72,25 @@ describe('workspace detector', () => {
     expect(info.packages).toContain('apps/web');
   });
 
+  test('detects deno.json workspaces', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'deno.json'),
+      JSON.stringify({ workspace: ['apps/api', 'apps/cli'] })
+    );
+    const apiDir = path.join(tmpDir, 'apps', 'api');
+    const cliDir = path.join(tmpDir, 'apps', 'cli');
+    fs.mkdirSync(apiDir, { recursive: true });
+    fs.mkdirSync(cliDir, { recursive: true });
+    fs.writeFileSync(path.join(apiDir, 'deno.json'), JSON.stringify({ name: '@deno/api' }));
+    fs.writeFileSync(path.join(cliDir, 'deno.json'), JSON.stringify({ name: '@deno/cli' }));
+
+    const info = detectWorkspace(tmpDir);
+    expect(info.isMonorepo).toBe(true);
+    expect(info.type).toBe('deno');
+    expect(info.packages).toContain('apps/api');
+    expect(info.packages).toContain('apps/cli');
+  });
+
   describe('sanitizeWorkspaceLockfiles (Ghost Lockfile Cleanup)', () => {
     test('purges ghost nested lockfiles in subpackages', () => {
       fs.writeFileSync(

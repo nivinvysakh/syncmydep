@@ -31681,6 +31681,27 @@ function detectWorkspace(workspaceDir) {
     if (external_fs_.existsSync(external_path_.join(workspaceDir, 'nx.json'))) {
         type = 'nx';
     }
+    // Check Deno workspaces (deno.json or deno.jsonc)
+    for (const denoConfigFile of ['deno.json', 'deno.jsonc']) {
+        const denoJsonPath = external_path_.join(workspaceDir, denoConfigFile);
+        if (external_fs_.existsSync(denoJsonPath)) {
+            try {
+                const denoConfig = JSON.parse(external_fs_.readFileSync(denoJsonPath, 'utf8'));
+                const wsMembers = denoConfig.workspace || denoConfig.workspaces;
+                if (wsMembers) {
+                    if (type === 'none') {
+                        type = 'deno';
+                    }
+                    if (Array.isArray(wsMembers)) {
+                        patterns.push(...wsMembers);
+                    }
+                }
+            }
+            catch {
+                // ignore
+            }
+        }
+    }
     // Check package.json workspaces (npm, yarn, bun)
     const pkgJsonPath = external_path_.join(workspaceDir, 'package.json');
     if (external_fs_.existsSync(pkgJsonPath)) {
@@ -31712,21 +31733,39 @@ function detectWorkspace(workspaceDir) {
     };
 }
 /**
- * Resolves directory paths containing package.json for standard glob patterns (e.g. packages/*).
+ * Resolves directory paths containing package.json or deno.json for standard glob patterns (e.g. packages/*).
  */
 function findWorkspacePackages(workspaceDir, patterns) {
     const discovered = [];
     const searchDirs = patterns.length > 0 ? patterns : ['packages/*', 'apps/*', 'libs/*'];
     for (const pattern of searchDirs) {
-        const baseDirName = pattern.replace(/\/\*.*$/, '').trim();
+        // If the pattern is an exact directory without wildcards (e.g. 'apps/api', './packages/ui')
+        if (!pattern.includes('*')) {
+            const cleanDir = pattern.replace(/^\.\//, '').trim();
+            const fullDir = external_path_.join(workspaceDir, cleanDir);
+            if (external_fs_.existsSync(fullDir) && external_fs_.statSync(fullDir).isDirectory()) {
+                const hasManifest = external_fs_.existsSync(external_path_.join(fullDir, 'package.json')) ||
+                    external_fs_.existsSync(external_path_.join(fullDir, 'deno.json')) ||
+                    external_fs_.existsSync(external_path_.join(fullDir, 'deno.jsonc'));
+                if (hasManifest) {
+                    discovered.push(cleanDir.replace(/\\/g, '/'));
+                }
+            }
+            continue;
+        }
+        // Pattern is a wildcard (e.g. 'packages/*', 'apps/*')
+        const baseDirName = pattern.replace(/\/\*.*$/, '').replace(/^\.\//, '').trim();
         const fullBaseDir = external_path_.join(workspaceDir, baseDirName);
         if (external_fs_.existsSync(fullBaseDir) && external_fs_.statSync(fullBaseDir).isDirectory()) {
             try {
                 const entries = external_fs_.readdirSync(fullBaseDir, { withFileTypes: true });
                 for (const entry of entries) {
                     if (entry.isDirectory()) {
-                        const childPkg = external_path_.join(fullBaseDir, entry.name, 'package.json');
-                        if (external_fs_.existsSync(childPkg)) {
+                        const childDir = external_path_.join(fullBaseDir, entry.name);
+                        const hasManifest = external_fs_.existsSync(external_path_.join(childDir, 'package.json')) ||
+                            external_fs_.existsSync(external_path_.join(childDir, 'deno.json')) ||
+                            external_fs_.existsSync(external_path_.join(childDir, 'deno.jsonc'));
+                        if (hasManifest) {
                             discovered.push(external_path_.join(baseDirName, entry.name).replace(/\\/g, '/'));
                         }
                     }
@@ -31793,7 +31832,11 @@ function parseBool(val, defaultVal) {
 function cleanLogOutput(raw) {
     if (!raw || !raw.trim())
         return '_No output reported._';
-    return '```text\n' + raw.trim() + '\n```';
+    const clean = raw
+        .replace(/\\x1b\[[0-9;]*[a-zA-Z]/g, '')
+        .replace(/\[0m|\[3[0-9]m/g, '')
+        .trim();
+    return '```text\n' + (clean || '_No output reported._') + '\n```';
 }
 function generateDockerDumpMarkdown(data) {
     const timestamp = new Date().toISOString();
