@@ -118,3 +118,49 @@ function findWorkspacePackages(workspaceDir: string, patterns: string[]): string
 
   return Array.from(new Set(discovered));
 }
+
+/**
+ * Scans nested workspace package directories and cleans up any "ghost" lockfiles
+ * (e.g. package-lock.json, pnpm-lock.yaml, yarn.lock, bun.lock, bun.lockb, deno.lock)
+ * that violate monorepo hoisting and break dependency resolution.
+ *
+ * @returns Array of relative paths of deleted ghost lockfiles.
+ */
+export function sanitizeWorkspaceLockfiles(
+  workspaceDir: string,
+  workspaceInfo: WorkspaceInfo
+): string[] {
+  if (!workspaceInfo.isMonorepo || workspaceInfo.packages.length === 0) {
+    return [];
+  }
+
+  const ghostLockfileNames = [
+    'package-lock.json',
+    'pnpm-lock.yaml',
+    'yarn.lock',
+    'bun.lock',
+    'bun.lockb',
+    'deno.lock'
+  ];
+
+  const removedGhostFiles: string[] = [];
+
+  for (const pkgRelPath of workspaceInfo.packages) {
+    const pkgFullPath = path.join(workspaceDir, pkgRelPath);
+    for (const lockfile of ghostLockfileNames) {
+      const nestedLockfilePath = path.join(pkgFullPath, lockfile);
+      if (fs.existsSync(nestedLockfilePath)) {
+        try {
+          fs.unlinkSync(nestedLockfilePath);
+          const relGhost = path.join(pkgRelPath, lockfile).replace(/\\/g, '/');
+          removedGhostFiles.push(relGhost);
+        } catch {
+          // ignore unlink error
+        }
+      }
+    }
+  }
+
+  return removedGhostFiles;
+}
+

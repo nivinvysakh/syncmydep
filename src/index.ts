@@ -32,7 +32,7 @@ import {
 } from './git-pr';
 
 import { loadConfigFile } from './config';
-import { detectWorkspace } from './workspace';
+import { detectWorkspace, sanitizeWorkspaceLockfiles } from './workspace';
 import { ensurePackageManagerInstalled } from './installer';
 import { restorePackageCache, savePackageCache } from './cache';
 import { rebaseAndRedoProcess, deleteRemoteBranch } from './rebase-pr';
@@ -112,10 +112,14 @@ async function run(): Promise<void> {
       core.info(`[SyncMyDep] Package ignore filter active: ${ignorePackages.join(', ')}`);
     }
 
-    // 3. Workspace / Monorepo Detection
+    // 3. Workspace / Monorepo Detection & Ghost Lockfile Sanitation
     const workspaceInfo = detectWorkspace(workspaceDir);
     if (workspaceInfo.isMonorepo) {
       core.info(`[SyncMyDep] Monorepo detected: type=${workspaceInfo.type}, packages=${workspaceInfo.packages.length}`);
+      const ghostLockfiles = sanitizeWorkspaceLockfiles(workspaceDir, workspaceInfo);
+      if (ghostLockfiles.length > 0) {
+        core.info(`[SyncMyDep] 🧹 Workspace Sanitation: Purged ${ghostLockfiles.length} ghost nested lockfile(s): ${ghostLockfiles.join(', ')}`);
+      }
     }
 
     const eventName = github.context.eventName;

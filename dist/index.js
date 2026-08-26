@@ -98592,6 +98592,44 @@ function findWorkspacePackages(workspaceDir, patterns) {
     }
     return Array.from(new Set(discovered));
 }
+/**
+ * Scans nested workspace package directories and cleans up any "ghost" lockfiles
+ * (e.g. package-lock.json, pnpm-lock.yaml, yarn.lock, bun.lock, bun.lockb, deno.lock)
+ * that violate monorepo hoisting and break dependency resolution.
+ *
+ * @returns Array of relative paths of deleted ghost lockfiles.
+ */
+function sanitizeWorkspaceLockfiles(workspaceDir, workspaceInfo) {
+    if (!workspaceInfo.isMonorepo || workspaceInfo.packages.length === 0) {
+        return [];
+    }
+    const ghostLockfileNames = [
+        'package-lock.json',
+        'pnpm-lock.yaml',
+        'yarn.lock',
+        'bun.lock',
+        'bun.lockb',
+        'deno.lock'
+    ];
+    const removedGhostFiles = [];
+    for (const pkgRelPath of workspaceInfo.packages) {
+        const pkgFullPath = external_path_.join(workspaceDir, pkgRelPath);
+        for (const lockfile of ghostLockfileNames) {
+            const nestedLockfilePath = external_path_.join(pkgFullPath, lockfile);
+            if (external_fs_.existsSync(nestedLockfilePath)) {
+                try {
+                    external_fs_.unlinkSync(nestedLockfilePath);
+                    const relGhost = external_path_.join(pkgRelPath, lockfile).replace(/\\/g, '/');
+                    removedGhostFiles.push(relGhost);
+                }
+                catch {
+                    // ignore unlink error
+                }
+            }
+        }
+    }
+    return removedGhostFiles;
+}
 
 // EXTERNAL MODULE: ./node_modules/@actions/io/lib/io.js
 var io = __nccwpck_require__(94994);
@@ -99403,10 +99441,14 @@ async function run() {
         if (ignorePackages.length > 0) {
             lib_core.info(`[SyncMyDep] Package ignore filter active: ${ignorePackages.join(', ')}`);
         }
-        // 3. Workspace / Monorepo Detection
+        // 3. Workspace / Monorepo Detection & Ghost Lockfile Sanitation
         const workspaceInfo = detectWorkspace(workspaceDir);
         if (workspaceInfo.isMonorepo) {
             lib_core.info(`[SyncMyDep] Monorepo detected: type=${workspaceInfo.type}, packages=${workspaceInfo.packages.length}`);
+            const ghostLockfiles = sanitizeWorkspaceLockfiles(workspaceDir, workspaceInfo);
+            if (ghostLockfiles.length > 0) {
+                lib_core.info(`[SyncMyDep] 🧹 Workspace Sanitation: Purged ${ghostLockfiles.length} ghost nested lockfile(s): ${ghostLockfiles.join(', ')}`);
+            }
         }
         const eventName = github.context.eventName;
         const isIssueComment = eventName === 'issue_comment';

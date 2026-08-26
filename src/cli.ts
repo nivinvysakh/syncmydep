@@ -14,7 +14,7 @@ import {
   verifyLockfileIntegrity
 } from './fixer';
 import { loadConfigFile } from './config';
-import { detectWorkspace } from './workspace';
+import { detectWorkspace, sanitizeWorkspaceLockfiles } from './workspace';
 import { AuditInspectionResult } from './types';
 
 export function parseBool(val: string | undefined, defaultVal: boolean): boolean {
@@ -43,6 +43,7 @@ export function generateDockerDumpMarkdown(data: {
   integritySuccess: boolean;
   integrityLog: string;
   changedFiles: string[];
+  sanitizedLockfiles?: string[];
   checkOnly: boolean;
 }): string {
   const timestamp = new Date().toISOString();
@@ -69,6 +70,7 @@ export function generateDockerDumpMarkdown(data: {
 | :--- | :--- |
 | **Lockfile Sync** | ${data.syncSuccess ? '✅ Successful' : '❌ Issues Encountered'} |
 | **Integrity Check** | ${data.integritySuccess ? '✅ Verified' : '⚠️ Warning / Issues'} |
+| **Ghost Lockfiles Purged** | ${data.sanitizedLockfiles && data.sanitizedLockfiles.length > 0 ? `🧹 Removed ${data.sanitizedLockfiles.length} (${data.sanitizedLockfiles.map((f) => `\`${f}\``).join(', ')})` : '_None (Clean workspace)_'} |
 | **Vulnerabilities Found** | \`${vulnsBefore}\` |
 | **Vulnerabilities After Fix** | \`${vulnsAfter}\` ${vulnsFixed > 0 ? `(🎉 Patched ${vulnsFixed})` : ''} |
 | **Files Modified** | ${data.changedFiles.length > 0 ? data.changedFiles.map((f) => `\`${f}\``).join(', ') : '_None (Already in sync)_'} |
@@ -126,6 +128,12 @@ export async function runCli(): Promise<void> {
     console.log(`🏢 Workspace:       Monorepo (${workspaceInfo.type}, ${workspaceInfo.packages.length} packages)`);
   } else {
     console.log(`📦 Workspace:       Single Package`);
+  }
+
+  // Ghost Lockfile Cleanup (Workspace Sanitation)
+  const sanitizedLockfiles = sanitizeWorkspaceLockfiles(workspaceDir, workspaceInfo);
+  if (sanitizedLockfiles.length > 0) {
+    console.log(`🧹 Sanitation:      Removed ${sanitizedLockfiles.length} ghost lockfile(s) (${sanitizedLockfiles.join(', ')})`);
   }
 
   const pm = detectPackageManager(workspaceDir, pmInput);
@@ -197,6 +205,7 @@ export async function runCli(): Promise<void> {
     integritySuccess: integrity.success,
     integrityLog: integrity.output,
     changedFiles,
+    sanitizedLockfiles,
     checkOnly
   });
 

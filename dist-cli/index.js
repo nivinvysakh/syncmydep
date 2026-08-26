@@ -31701,6 +31701,44 @@ function findWorkspacePackages(workspaceDir, patterns) {
     }
     return Array.from(new Set(discovered));
 }
+/**
+ * Scans nested workspace package directories and cleans up any "ghost" lockfiles
+ * (e.g. package-lock.json, pnpm-lock.yaml, yarn.lock, bun.lock, bun.lockb, deno.lock)
+ * that violate monorepo hoisting and break dependency resolution.
+ *
+ * @returns Array of relative paths of deleted ghost lockfiles.
+ */
+function sanitizeWorkspaceLockfiles(workspaceDir, workspaceInfo) {
+    if (!workspaceInfo.isMonorepo || workspaceInfo.packages.length === 0) {
+        return [];
+    }
+    const ghostLockfileNames = [
+        'package-lock.json',
+        'pnpm-lock.yaml',
+        'yarn.lock',
+        'bun.lock',
+        'bun.lockb',
+        'deno.lock'
+    ];
+    const removedGhostFiles = [];
+    for (const pkgRelPath of workspaceInfo.packages) {
+        const pkgFullPath = external_path_.join(workspaceDir, pkgRelPath);
+        for (const lockfile of ghostLockfileNames) {
+            const nestedLockfilePath = external_path_.join(pkgFullPath, lockfile);
+            if (external_fs_.existsSync(nestedLockfilePath)) {
+                try {
+                    external_fs_.unlinkSync(nestedLockfilePath);
+                    const relGhost = external_path_.join(pkgRelPath, lockfile).replace(/\\/g, '/');
+                    removedGhostFiles.push(relGhost);
+                }
+                catch {
+                    // ignore unlink error
+                }
+            }
+        }
+    }
+    return removedGhostFiles;
+}
 
 ;// CONCATENATED MODULE: ./src/cli.ts
 
@@ -31743,6 +31781,7 @@ function generateDockerDumpMarkdown(data) {
 | :--- | :--- |
 | **Lockfile Sync** | ${data.syncSuccess ? '✅ Successful' : '❌ Issues Encountered'} |
 | **Integrity Check** | ${data.integritySuccess ? '✅ Verified' : '⚠️ Warning / Issues'} |
+| **Ghost Lockfiles Purged** | ${data.sanitizedLockfiles && data.sanitizedLockfiles.length > 0 ? `🧹 Removed ${data.sanitizedLockfiles.length} (${data.sanitizedLockfiles.map((f) => `\`${f}\``).join(', ')})` : '_None (Clean workspace)_'} |
 | **Vulnerabilities Found** | \`${vulnsBefore}\` |
 | **Vulnerabilities After Fix** | \`${vulnsAfter}\` ${vulnsFixed > 0 ? `(🎉 Patched ${vulnsFixed})` : ''} |
 | **Files Modified** | ${data.changedFiles.length > 0 ? data.changedFiles.map((f) => `\`${f}\``).join(', ') : '_None (Already in sync)_'} |
@@ -31795,6 +31834,11 @@ async function runCli() {
     }
     else {
         console.log(`📦 Workspace:       Single Package`);
+    }
+    // Ghost Lockfile Cleanup (Workspace Sanitation)
+    const sanitizedLockfiles = sanitizeWorkspaceLockfiles(workspaceDir, workspaceInfo);
+    if (sanitizedLockfiles.length > 0) {
+        console.log(`🧹 Sanitation:      Removed ${sanitizedLockfiles.length} ghost lockfile(s) (${sanitizedLockfiles.join(', ')})`);
     }
     const pm = detectPackageManager(workspaceDir, pmInput);
     const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
@@ -31857,6 +31901,7 @@ async function runCli() {
         integritySuccess: integrity.success,
         integrityLog: integrity.output,
         changedFiles,
+        sanitizedLockfiles,
         checkOnly
     });
     let dumpSaved = false;

@@ -31,6 +31,7 @@ describe('CLI helpers & execution', () => {
       patterns: [],
       packages: []
     });
+    (workspace.sanitizeWorkspaceLockfiles as jest.Mock).mockReturnValue([]);
     (detector.detectPackageManager as jest.Mock).mockReturnValue('npm');
     (detector.checkPackageJsonExists as jest.Mock).mockReturnValue(true);
     (detector.inspectAudit as jest.Mock).mockResolvedValue({ total: 0, summary: {}, raw: {} });

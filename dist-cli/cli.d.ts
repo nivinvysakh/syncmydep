@@ -16,6 +16,7 @@ export declare function generateDockerDumpMarkdown(data: {
     integritySuccess: boolean;
     integrityLog: string;
     changedFiles: string[];
+    sanitizedLockfiles?: string[];
     checkOnly: boolean;
 }): string;
 export declare function runCli(): Promise<void>;
