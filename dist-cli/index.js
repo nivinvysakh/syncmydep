@@ -31862,12 +31862,19 @@ async function runCli() {
     let dumpSaved = false;
     const dumpFilePath = external_path_.join(workspaceDir, 'log_docker_dump.md');
     try {
-        external_fs_.writeFileSync(dumpFilePath, dumpMarkdown, 'utf-8');
+        if (external_fs_.existsSync(dumpFilePath)) {
+            try {
+                external_fs_.unlinkSync(dumpFilePath);
+            }
+            catch {
+                // ignore unlink attempt
+            }
+        }
+        external_fs_.writeFileSync(dumpFilePath, dumpMarkdown, { encoding: 'utf-8', flag: 'w', mode: 0o666 });
         dumpSaved = true;
     }
-    catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        console.warn(`⚠️  Could not write log_docker_dump.md: ${errMsg}`);
+    catch {
+        dumpSaved = false;
     }
     console.log('=============================================================');
     if (checkOnly) {

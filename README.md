@@ -165,10 +165,16 @@ jobs:
 You can run SyncMyDep directly on your local machine without installing Bun, Deno, pnpm, or Yarn:
 
 ```bash
-# Build the Docker image locally
-docker build -t syncmydep .
+# Run sync directly with the official GitHub Container Registry image
+docker run --rm -v "$(pwd)":/workspace ghcr.io/nivinvysakh/syncmydep:latest
 
-# Run sync on your current project directory
+# Or run in check-only CI verification mode
+docker run --rm -v "$(pwd)":/workspace -e INPUT_CHECK_ONLY="true" ghcr.io/nivinvysakh/syncmydep:latest
+```
+
+Or build and run locally:
+```bash
+docker build -t syncmydep .
 docker run --rm -v "$(pwd)":/workspace syncmydep
 ```
 

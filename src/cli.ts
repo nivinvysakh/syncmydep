@@ -203,11 +203,17 @@ export async function runCli(): Promise<void> {
   let dumpSaved = false;
   const dumpFilePath = path.join(workspaceDir, 'log_docker_dump.md');
   try {
-    fs.writeFileSync(dumpFilePath, dumpMarkdown, 'utf-8');
+    if (fs.existsSync(dumpFilePath)) {
+      try {
+        fs.unlinkSync(dumpFilePath);
+      } catch {
+        // ignore unlink attempt
+      }
+    }
+    fs.writeFileSync(dumpFilePath, dumpMarkdown, { encoding: 'utf-8', flag: 'w', mode: 0o666 });
     dumpSaved = true;
-  } catch (err: unknown) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    console.warn(`⚠️  Could not write log_docker_dump.md: ${errMsg}`);
+  } catch {
+    dumpSaved = false;
   }
 
   console.log('=============================================================');
