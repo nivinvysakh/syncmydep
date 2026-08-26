@@ -71,6 +71,16 @@ export async function syncLockfile(
 
   const exitCode = await exec.exec(command, args, options);
 
+  // Fallback for npm (e.g. monorepo workspaces where initial package-lock.json does not yet exist)
+  if (exitCode !== 0 && pm === 'npm') {
+    core.info('[SyncMyDep] Retrying npm synchronization with npm install --ignore-scripts --no-audit --no-fund...');
+    const retryCode = await exec.exec('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund'], options);
+    return {
+      success: retryCode === 0,
+      output
+    };
+  }
+
   // Fallback for Bun if --lockfile-only is not supported on older versions
   if (exitCode !== 0 && pm === 'bun') {
     core.info('[SyncMyDep] Retrying Bun synchronization with bun install...');
