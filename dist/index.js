@@ -95275,7 +95275,7 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
         isNew = true;
         lib_core.info(`[SyncMyDep] Successfully created Pull Request #${prNumber}: ${prUrl}`);
     }
-    // Apply labels
+    // Apply labels (with automatic label creation fallback)
     if (labels && labels.length > 0) {
         try {
             await octokit.rest.issues.addLabels({
@@ -95284,10 +95284,38 @@ async function createOrUpdatePullRequest({ octokit, owner, repo, baseBranch, hea
                 issue_number: prNumber,
                 labels,
             });
+            lib_core.info(`[SyncMyDep] ✅ Successfully attached labels: ${labels.join(', ')}`);
         }
         catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
-            lib_core.warning(`Could not apply labels to PR #${prNumber}: ${errMsg}`);
+            lib_core.info(`[SyncMyDep] Retrying label attachment with auto-creation for: ${labels.join(', ')} (${errMsg})...`);
+            for (const label of labels) {
+                try {
+                    try {
+                        await octokit.rest.issues.createLabel({
+                            owner,
+                            repo,
+                            name: label,
+                            color: label.toLowerCase().includes('syncmydep') ? '6f42c1' : '0366d6',
+                            description: 'Applied by SyncMyDep',
+                        });
+                    }
+                    catch {
+                        // ignore if label already exists or permission restricted
+                    }
+                    await octokit.rest.issues.addLabels({
+                        owner,
+                        repo,
+                        issue_number: prNumber,
+                        labels: [label],
+                    });
+                    lib_core.info(`[SyncMyDep] ✅ Applied label: ${label}`);
+                }
+                catch (labelErr) {
+                    const lMsg = labelErr instanceof Error ? labelErr.message : String(labelErr);
+                    lib_core.warning(`[SyncMyDep] Could not apply label '${label}' to PR #${prNumber}: ${lMsg}`);
+                }
+            }
         }
     }
     // Apply assignees
@@ -99491,7 +99519,7 @@ async function run() {
         const branchName = lib_core.getInput('pr-branch') || fileConfig.prBranch || 'syncmydep/dependency-fix';
         const prTitle = lib_core.getInput('pr-title') || fileConfig.prTitle || 'chore(deps): synchronize package.json and lockfile issues';
         const commitMessage = lib_core.getInput('commit-message') || fileConfig.commitMessage || 'chore(deps): synchronize package.json and lockfile issues';
-        const labelsInput = lib_core.getInput('pr-labels') || (fileConfig.prLabels ? fileConfig.prLabels.join(',') : '');
+        const labelsInput = lib_core.getInput('pr-labels') || (fileConfig.prLabels ? fileConfig.prLabels.join(',') : '') || 'dependencies, automated-pr, SyncMyDep';
         const assigneesInput = lib_core.getInput('pr-assignees') || (fileConfig.prAssignees ? fileConfig.prAssignees.join(',') : '');
         const reviewersInput = lib_core.getInput('pr-reviewers') || (fileConfig.prReviewers ? fileConfig.prReviewers.join(',') : '');
         const ignorePackagesInput = lib_core.getInput('ignore-packages') || (fileConfig.ignorePackages ? fileConfig.ignorePackages.join(',') : '');

@@ -13,7 +13,7 @@ inputs:
   package-manager:
     description: 'Package manager to use: "auto", "npm", "yarn", "pnpm", "bun", or "deno".'
     required: false
-    default: 'auto'
+    default: ''
   working-directory:
     description: 'Working directory containing package.json / deno.json and lockfiles.'
     required: false
@@ -25,39 +25,39 @@ inputs:
   sync-lockfile:
     description: 'Whether to synchronize lockfile with package specifications.'
     required: false
-    default: 'true'
+    default: ''
   fix-audit:
     description: 'Whether to automatically fix security vulnerabilities with audit fix.'
     required: false
-    default: 'true'
+    default: ''
   audit-level:
     description: 'Minimum vulnerability level to fix/report: "low", "moderate", "high", "critical".'
     required: false
-    default: 'moderate'
+    default: ''
   check-only:
     description: 'Dry-run CI gating mode that emits step annotations and exits with code 1 on desync/vulnerabilities.'
     required: false
-    default: 'false'
+    default: ''
   direct-push:
     description: 'Whether to commit and push directly to open pull request branches when triggered on pull_request.'
     required: false
-    default: 'false'
+    default: ''
   pr-branch:
     description: 'Branch name to create or update for the Pull Request.'
     required: false
-    default: 'syncmydep/dependency-fix'
+    default: ''
   pr-title:
     description: 'Title for the generated Pull Request.'
     required: false
-    default: 'chore(deps): synchronize package.json and lockfile issues'
+    default: ''
   commit-message:
     description: 'Commit message for the dependency update.'
     required: false
-    default: 'chore(deps): synchronize package.json and lockfile issues'
+    default: ''
   pr-labels:
     description: 'Comma-separated labels to attach to the Pull Request.'
     required: false
-    default: 'dependencies, automated-pr'
+    default: ''
   pr-assignees:
     description: 'Comma-separated GitHub usernames to assign to the PR.'
     required: false
@@ -69,15 +69,15 @@ inputs:
   comment-trigger:
     description: 'Comment keyword that triggers dependency synchronization on a PR (e.g. "syncdep" or "/syncdep").'
     required: false
-    default: 'syncdep'
+    default: ''
   require-owner:
     description: 'Whether only repository owners/maintainers are allowed to trigger dependency fixes via comment ("true" or "false").'
     required: false
-    default: 'true'
+    default: ''
   verify-lockfile:
     description: 'Whether to run a dry-run frozen installation check on the generated lockfile before committing.'
     required: false
-    default: 'true'
+    default: ''
   run-build:
     description: 'Optional build smoke test command (e.g. "npm run build") to verify before opening PR.'
     required: false
@@ -85,23 +85,23 @@ inputs:
   fail-on-build-error:
     description: 'Whether to fail and abort if the build smoke test encounters an error ("true" or "false").'
     required: false
-    default: 'false'
+    default: ''
   auto-merge:
     description: 'Whether to enable GitHub native auto-merge once CI status checks pass ("true" or "false").'
     required: false
-    default: 'false'
+    default: ''
   auto-merge-method:
     description: 'Merge method for auto-merge: "squash", "merge", or "rebase".'
     required: false
-    default: 'squash'
+    default: ''
   cache:
     description: 'Whether to automatically restore and save package manager caches to accelerate runs ("true" or "false").'
     required: false
-    default: 'true'
+    default: ''
   dedupe:
     description: 'Whether to deduplicate lockfile dependencies to shrink file size ("true" or "false").'
     required: false
-    default: 'false'
+    default: ''
   base-branch:
     description: 'Custom base branch to target for PRs instead of default branch.'
     required: false
@@ -109,11 +109,11 @@ inputs:
   pr-draft:
     description: 'Whether to create the Pull Request as a Draft PR ("true" or "false").'
     required: false
-    default: 'false'
+    default: ''
   step-summary:
     description: 'Whether to render visual markdown report to GitHub Step Summary ("true" or "false").'
     required: false
-    default: 'true'
+    default: ''
   pr-header:
     description: 'Custom Markdown text prepended to the generated PR description.'
     required: false

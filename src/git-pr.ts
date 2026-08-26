@@ -394,7 +394,7 @@ export async function createOrUpdatePullRequest({
     );
   }
 
-  // Apply labels
+  // Apply labels (with automatic label creation fallback)
   if (labels && labels.length > 0) {
     try {
       await octokit.rest.issues.addLabels({
@@ -403,9 +403,35 @@ export async function createOrUpdatePullRequest({
         issue_number: prNumber,
         labels,
       });
+      core.info(`[SyncMyDep] ✅ Successfully attached labels: ${labels.join(', ')}`);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      core.warning(`Could not apply labels to PR #${prNumber}: ${errMsg}`);
+      core.info(`[SyncMyDep] Retrying label attachment with auto-creation for: ${labels.join(', ')} (${errMsg})...`);
+      for (const label of labels) {
+        try {
+          try {
+            await octokit.rest.issues.createLabel({
+              owner,
+              repo,
+              name: label,
+              color: label.toLowerCase().includes('syncmydep') ? '6f42c1' : '0366d6',
+              description: 'Applied by SyncMyDep',
+            });
+          } catch {
+            // ignore if label already exists or permission restricted
+          }
+          await octokit.rest.issues.addLabels({
+            owner,
+            repo,
+            issue_number: prNumber,
+            labels: [label],
+          });
+          core.info(`[SyncMyDep] ✅ Applied label: ${label}`);
+        } catch (labelErr: unknown) {
+          const lMsg = labelErr instanceof Error ? labelErr.message : String(labelErr);
+          core.warning(`[SyncMyDep] Could not apply label '${label}' to PR #${prNumber}: ${lMsg}`);
+        }
+      }
     }
   }
 
