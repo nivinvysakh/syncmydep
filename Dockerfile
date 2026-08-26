@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:22-slim
 
 LABEL org.opencontainers.image.title="SyncMyDep"
 LABEL org.opencontainers.image.description="Automated dependency synchronization and lockfile auto-fixer across npm, pnpm, yarn, bun, and deno."
@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Enable corepack for native pnpm and yarn support
-RUN corepack enable && corepack prepare pnpm@9 --activate
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Install Bun and Deno
 RUN curl -fsSL https://bun.sh/install | bash
