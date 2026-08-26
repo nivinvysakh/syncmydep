@@ -1,0 +1,27 @@
+services:
+  # Default service: Syncs lockfiles and patches vulnerabilities in the current directory
+  syncmydep:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: syncmydep:latest
+    container_name: syncmydep
+    volumes:
+      - .:/workspace
+    environment:
+      - INPUT_SYNC_LOCKFILE=true
+      - INPUT_FIX_AUDIT=true
+      - INPUT_AUDIT_LEVEL=moderate
+      - INPUT_CHECK_ONLY=false
+
+  # Check-Only mode: Dry-run linter to verify lockfiles without making modifications
+  check:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: syncmydep:latest
+    container_name: syncmydep-check
+    volumes:
+      - .:/workspace
+    environment:
+      - INPUT_CHECK_ONLY=true

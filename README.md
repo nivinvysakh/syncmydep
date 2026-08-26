@@ -156,7 +156,29 @@ jobs:
       - uses: actions/checkout@v4
       - uses: nivinvysakh/syncmydep@v1
         with:
-          check-only: "true"
+```
+
+---
+
+### 4. 🐳 Running Locally with Docker
+
+You can run SyncMyDep directly on your local machine without installing Bun, Deno, pnpm, or Yarn:
+
+```bash
+# Build the Docker image locally
+docker build -t syncmydep .
+
+# Run sync on your current project directory
+docker run --rm -v "$(pwd)":/workspace syncmydep
+```
+
+Or using **Docker Compose**:
+```bash
+# Auto-sync and fix lockfiles in current project
+docker compose up syncmydep
+
+# Or verify lockfiles in check-only mode
+docker compose run --rm check
 ```
 
 ---
