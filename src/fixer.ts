@@ -139,7 +139,7 @@ export async function runAuditFix(
 
     case 'pnpm':
       command = 'pnpm';
-      args = ['audit', '--fix'];
+      args = ['audit', '--fix=update'];
       break;
 
     case 'yarn':
@@ -175,6 +175,16 @@ export async function runAuditFix(
   };
 
   const exitCode = await exec.exec(command, args, options);
+
+  if (exitCode !== 0 && pm === 'pnpm' && output.includes('ERR_PNPM_INVALID_FIX_OPTION')) {
+    core.info(`[SyncMyDep] Retrying pnpm audit with fallback --fix...`);
+    output = '';
+    const retryCode = await exec.exec('pnpm', ['audit', '--fix'], options);
+    return {
+      success: retryCode === 0,
+      output
+    };
+  }
 
   if (exitCode !== 0 && pm === 'npm' && (output.includes('EBADPLATFORM') || output.includes('ENOLOCK'))) {
     core.info(`[SyncMyDep] Retrying npm audit fix with --force...`);

@@ -94585,7 +94585,7 @@ async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
             break;
         case 'pnpm':
             command = 'pnpm';
-            args = ['audit', '--fix'];
+            args = ['audit', '--fix=update'];
             break;
         case 'yarn':
             command = 'yarn';
@@ -94615,6 +94615,15 @@ async function runAuditFix(workspaceDir, pm, auditLevel = 'moderate') {
         }
     };
     const exitCode = await lib_exec.exec(command, args, options);
+    if (exitCode !== 0 && pm === 'pnpm' && output.includes('ERR_PNPM_INVALID_FIX_OPTION')) {
+        lib_core.info(`[SyncMyDep] Retrying pnpm audit with fallback --fix...`);
+        output = '';
+        const retryCode = await lib_exec.exec('pnpm', ['audit', '--fix'], options);
+        return {
+            success: retryCode === 0,
+            output
+        };
+    }
     if (exitCode !== 0 && pm === 'npm' && (output.includes('EBADPLATFORM') || output.includes('ENOLOCK'))) {
         lib_core.info(`[SyncMyDep] Retrying npm audit fix with --force...`);
         output = '';
