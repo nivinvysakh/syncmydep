@@ -1,11 +1,10 @@
 name: Publish Docker Image to GHCR
 
 on:
-  push:
-    branches: [main, Beta]
-    tags: ['v*.*.*']
   release:
     types: [published]
+  push:
+    tags: ['v*.*.*']
   workflow_dispatch:
 
 env:
@@ -55,10 +54,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern=v{{major}}
+            type=raw,value=latest
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
