@@ -8,6 +8,12 @@
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 [![Automated Dependency Sync](https://img.shields.io/badge/SyncMyDep-Action-purple.svg)](https://github.com/nivinvysakh/syncmydep)
+<!-- syncmydep:start -->
+[![Sync Status](https://img.shields.io/badge/SyncMyDep-In%20Sync-2ea44f?logo=githubactions)](https://github.com/nivinvysakh/syncmydep)
+[![Vulnerabilities](https://img.shields.io/badge/Vulnerabilities-0%20detected-brightgreen?logo=snyk)](https://github.com/nivinvysakh/syncmydep)
+[![Package Manager](https://img.shields.io/badge/Package%20Manager-npm-CB3837?logo=npm)](https://github.com/nivinvysakh/syncmydep)
+[![Risk Score](https://img.shields.io/badge/Risk%20Score-Low%20Risk-brightgreen)](https://github.com/nivinvysakh/syncmydep)
+<!-- syncmydep:end -->
 
 > A high-performance, TypeScript-powered GitHub Action and multi-arch Docker container that detects package manifest and lockfile desynchronization or vulnerabilities, auto-fixes them across **npm**, **pnpm**, **yarn (v1 & berry)**, **bun**, and **deno** (including monorepos), and opens Pull Requests or commits fixes directly.
 
@@ -215,6 +221,65 @@ docker compose up syncmydep
 
 # Or verify lockfiles in check-only mode
 docker compose run --rm check
+```
+
+---
+
+### 6. 🧹 Unused Dependency Scanner & Auto-Pruning
+
+SyncMyDep scans your project files (`.js`, `.ts`, `.jsx`, `.tsx`, `.vue`, `.svelte`, `.astro`) to find un-imported dependencies and cleanly prunes them:
+
+#### In GitHub Actions (`.github/workflows/syncmydep.yml`):
+```yaml
+- uses: nivinvysakh/syncmydep@v1
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    detect-unused-deps: "true" # 🔍 Scan & display unused dependencies in PR
+    prune-unused-deps: "true"  # 🧹 Automatically remove unused dependencies from package.json
+    ignore-packages: "eslint,prettier,tailwindcss,@types/node" # 🛡️ Whitelist tools
+```
+
+#### Run Locally via CLI:
+```bash
+# Detects unused packages, removes them from package.json, and resyncs lockfile
+npx syncmydep prune
+```
+
+---
+
+### 7. 📊 Dynamic README Status Badges
+
+Automatically generate and embed live Shields.io badges tracking dependency synchronization, vulnerability counts, package manager, and breaking change risk:
+
+#### Step 1: Add Badge Markers to `README.md`
+Place these HTML comment markers where you want the badges to render (e.g. under your `# Title`):
+```markdown
+# My Project
+
+<!-- syncmydep:start -->
+<!-- syncmydep:end -->
+
+## About
+...
+```
+
+#### Step 2: Enable in GitHub Actions or `.syncmydep.yml`:
+```yaml
+# In workflow:
+with:
+  update-readme-badge: "true"
+
+# Or in .syncmydep.yml:
+update-readme-badge: true
+```
+
+#### Step 3: Or Update Locally via CLI:
+```bash
+# Preview markdown badges in terminal
+npx syncmydep badge
+
+# Automatically inject/update the badges into your local README.md
+npx syncmydep badge --update
 ```
 
 ---
