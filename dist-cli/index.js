@@ -28220,7 +28220,7 @@ async function parseDependencyDiffs(workspaceDir, changedFiles) {
                 }
             }
         };
-        await exec.exec('git', ['diff', '-U1', '--', ...pkgFiles], options);
+        await lib_exec.exec('git', ['diff', '-U1', '--', ...pkgFiles], options);
         if (pkgDiffText) {
             const lines = pkgDiffText.split('\n');
             const removedMap = new Map();
@@ -28295,7 +28295,7 @@ async function parseDependencyDiffs(workspaceDir, changedFiles) {
                 }
             }
         };
-        await exec.exec('git', ['diff', '-U3', '--', ...lockFiles], lockOptions);
+        await lib_exec.exec('git', ['diff', '-U3', '--', ...lockFiles], lockOptions);
         if (lockDiffText) {
             const lockLines = lockDiffText.split('\n');
             let currentPkg = null;
@@ -31620,7 +31620,13 @@ function normalizeConfig(raw) {
         failOnBuildError: getVal('failOnBuildError', 'fail-on-build-error', 'fail_on_build_error'),
         autoMerge: getVal('autoMerge', 'auto-merge', 'auto_merge'),
         autoMergeMethod: getVal('autoMergeMethod', 'auto-merge-method', 'auto_merge_method'),
-        cache: getVal('cache', 'cache')
+        cache: getVal('cache', 'cache'),
+        detectUnusedDeps: getVal('detectUnusedDeps', 'detect-unused-deps', 'detect_unused_deps', 'unusedDeps', 'unused-deps'),
+        pruneUnusedDeps: getVal('pruneUnusedDeps', 'prune-unused-deps', 'prune_unused_deps', 'prune'),
+        ignoreUnusedPackages: normalizeList(getVal('ignoreUnusedPackages', 'ignore-unused-packages', 'ignore_unused_packages')),
+        showChangelogs: getVal('showChangelogs', 'show-changelogs', 'show_changelogs', 'changelogs'),
+        riskScoring: getVal('riskScoring', 'risk-scoring', 'risk_scoring', 'risk'),
+        updateReadmeBadge: getVal('updateReadmeBadge', 'update-readme-badge', 'update_readme_badge', 'readmeBadge', 'readme-badge')
     };
 }
 
@@ -31817,7 +31823,487 @@ function sanitizeWorkspaceLockfiles(workspaceDir, workspaceInfo) {
     return removedGhostFiles;
 }
 
+;// CONCATENATED MODULE: ./src/risk.ts
+/**
+ * Parses a semver-like version string into major, minor, patch numbers.
+ */
+function parseSemVer(versionStr) {
+    if (!versionStr)
+        return { major: 0, minor: 0, patch: 0, valid: false };
+    // Strip leading ^, ~, =, v, >=, etc.
+    const cleaned = versionStr.replace(/^[^\d]*/, '').split('-')[0].split('+')[0].trim();
+    const parts = cleaned.split('.').map((p) => parseInt(p, 10));
+    if (parts.length >= 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+        return { major: parts[0], minor: parts[1], patch: parts[2], valid: true };
+    }
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        return { major: parts[0], minor: parts[1], patch: 0, valid: true };
+    }
+    if (parts.length === 1 && !isNaN(parts[0])) {
+        return { major: parts[0], minor: 0, patch: 0, valid: true };
+    }
+    return { major: 0, minor: 0, patch: 0, valid: false };
+}
+/**
+ * Analyzes the semver distance between old and new version.
+ */
+function evaluateVersionRisk(pkgName, oldVersion, newVersion, changeType = 'upgraded') {
+    if (changeType === 'removed') {
+        return {
+            package: pkgName,
+            level: 'moderate',
+            reason: 'Package was removed; ensure no imports remain in codebase.',
+            fromVersion: oldVersion,
+            toVersion: newVersion
+        };
+    }
+    if (changeType === 'added') {
+        return {
+            package: pkgName,
+            level: 'low',
+            reason: 'New package added to dependency tree.',
+            fromVersion: oldVersion,
+            toVersion: newVersion
+        };
+    }
+    if (changeType === 'downgraded') {
+        return {
+            package: pkgName,
+            level: 'moderate',
+            reason: 'Package downgraded; check for missing newer features.',
+            fromVersion: oldVersion,
+            toVersion: newVersion
+        };
+    }
+    const oldSem = parseSemVer(oldVersion);
+    const newSem = parseSemVer(newVersion);
+    if (!oldSem.valid || !newSem.valid) {
+        return {
+            package: pkgName,
+            level: 'low',
+            reason: 'Lockfile drift / synchronization without major version bump.',
+            fromVersion: oldVersion,
+            toVersion: newVersion
+        };
+    }
+    // 0.x.x versions treat minor bumps as breaking changes per SemVer spec
+    if (oldSem.major === 0 && newSem.major === 0) {
+        if (newSem.minor > oldSem.minor) {
+            return {
+                package: pkgName,
+                level: 'high',
+                reason: `Initial development major shift (v0.${oldSem.minor} ➔ v0.${newSem.minor}); potential breaking changes.`,
+                fromVersion: oldVersion,
+                toVersion: newVersion
+            };
+        }
+        if (newSem.patch > oldSem.patch) {
+            return {
+                package: pkgName,
+                level: 'low',
+                reason: `Safe patch update (v0.${oldSem.minor}.${oldSem.patch} ➔ v0.${newSem.minor}.${newSem.patch}).`,
+                fromVersion: oldVersion,
+                toVersion: newVersion
+            };
+        }
+    }
+    if (newSem.major > oldSem.major) {
+        return {
+            package: pkgName,
+            level: 'high',
+            reason: `Major SemVer jump (v${oldSem.major} ➔ v${newSem.major}); breaking API changes likely.`,
+            fromVersion: oldVersion,
+            toVersion: newVersion
+        };
+    }
+    if (newSem.minor > oldSem.minor) {
+        return {
+            package: pkgName,
+            level: 'moderate',
+            reason: `Minor feature update (v${oldSem.major}.${oldSem.minor} ➔ v${newSem.major}.${newSem.minor}); backwards compatible.`,
+            fromVersion: oldVersion,
+            toVersion: newVersion
+        };
+    }
+    return {
+        package: pkgName,
+        level: 'low',
+        reason: `Patch / bug-fix update (v${oldSem.major}.${oldSem.minor}.${oldSem.patch} ➔ v${newSem.major}.${newSem.minor}.${newSem.patch}).`,
+        fromVersion: oldVersion,
+        toVersion: newVersion
+    };
+}
+/**
+ * Calculates the overall risk score and recommendation for the Pull Request.
+ */
+function calculateRiskScore(diffs = []) {
+    if (diffs.length === 0) {
+        return {
+            overallLevel: 'low',
+            score: 1,
+            badge: '🟢 **Low Risk (Lockfile Sync)**',
+            summary: 'Safe lockfile synchronization. No breaking dependency changes detected.',
+            factors: [],
+            safeToAutoMerge: true
+        };
+    }
+    const factors = diffs.map((d) => evaluateVersionRisk(d.name, d.oldVersion, d.newVersion, d.changeType));
+    const hasHigh = factors.some((f) => f.level === 'high');
+    const hasModerate = factors.some((f) => f.level === 'moderate');
+    let overallLevel = 'low';
+    let score = 2;
+    let badge = '🟢 **Low Risk**';
+    let summary = 'Changes consist of backward-compatible patch updates or lockfile reconciliation.';
+    let safeToAutoMerge = true;
+    if (hasHigh) {
+        overallLevel = 'high';
+        score = 8;
+        badge = '🔴 **High Risk (Major Breaking Changes)**';
+        summary = 'One or more dependencies underwent a major version upgrade. Review changelogs carefully before merging.';
+        safeToAutoMerge = false;
+    }
+    else if (hasModerate) {
+        overallLevel = 'moderate';
+        score = 4;
+        badge = '🟡 **Moderate Risk (Minor / Feature Updates)**';
+        summary = 'Changes include minor version bumps or new dependencies. Safe, but verify feature compatibility.';
+        safeToAutoMerge = true;
+    }
+    return {
+        overallLevel,
+        score,
+        badge,
+        summary,
+        factors,
+        safeToAutoMerge
+    };
+}
+
+;// CONCATENATED MODULE: ./src/unused-deps.ts
+
+
+// Default list of dev/build tooling packages that are executed via CLI and never directly imported
+const DEFAULT_IGNORED_DEV_PACKAGES = new Set([
+    'typescript',
+    'ts-node',
+    'ts-jest',
+    'jest',
+    'eslint',
+    'prettier',
+    'rimraf',
+    'husky',
+    'lint-staged',
+    'cross-env',
+    'concurrently',
+    'nodemon',
+    'vite',
+    'webpack',
+    'rollup',
+    'turbo',
+    'lerna',
+    'nx'
+]);
+const IGNORED_DIRS = new Set([
+    'node_modules',
+    'dist',
+    'dist-cli',
+    'coverage',
+    '.git',
+    '.yarn',
+    '.next',
+    '.nuxt',
+    '.turbo',
+    '.cache',
+    'build',
+    'out'
+]);
+const SOURCE_EXTENSIONS = new Set([
+    '.js',
+    '.jsx',
+    '.ts',
+    '.tsx',
+    '.mjs',
+    '.cjs',
+    '.vue',
+    '.svelte',
+    '.astro'
+]);
+/**
+ * Extracts the base package name from an import/require specifier.
+ * E.g., '@actions/core/lib/foo' -> '@actions/core', 'lodash/map' -> 'lodash'
+ */
+function extractPackageName(specifier) {
+    const clean = specifier.trim().replace(/^['"]|['"]$/g, '');
+    // Skip relative, absolute, protocol, or empty paths
+    if (!clean ||
+        clean.startsWith('.') ||
+        clean.startsWith('/') ||
+        clean.startsWith('node:') ||
+        clean.startsWith('bun:') ||
+        clean.startsWith('deno:') ||
+        clean.startsWith('http://') ||
+        clean.startsWith('https://')) {
+        return null;
+    }
+    // Scoped package (@org/pkg/subpath)
+    if (clean.startsWith('@')) {
+        const parts = clean.split('/');
+        if (parts.length >= 2) {
+            return `${parts[0]}/${parts[1]}`;
+        }
+        return clean;
+    }
+    // Regular package (pkg/subpath)
+    const parts = clean.split('/');
+    return parts[0];
+}
+/**
+ * Parses all imports, requires, and dynamic imports from source text using fast regex parsing.
+ */
+function extractImportsFromCode(code) {
+    const found = new Set();
+    // match: import ... from 'pkg' or import 'pkg' or export ... from 'pkg'
+    const importRegex = /(?:import\s+(?:[\s\S]*?from\s+)?['"]([^'"]+)['"])|(?:export\s+[\s\S]*?from\s+['"]([^'"]+)['"])/g;
+    let match;
+    while ((match = importRegex.exec(code)) !== null) {
+        const spec = match[1] || match[2];
+        const pkg = extractPackageName(spec);
+        if (pkg)
+            found.add(pkg);
+    }
+    // match: require('pkg') or import('pkg')
+    const dynamicRegex = /(?:require|import)\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+    while ((match = dynamicRegex.exec(code)) !== null) {
+        const spec = match[1];
+        const pkg = extractPackageName(spec);
+        if (pkg)
+            found.add(pkg);
+    }
+    return found;
+}
+/**
+ * Recursively scans directory for source files.
+ */
+function scanSourceFiles(dir, fileList = []) {
+    if (!external_fs_.existsSync(dir))
+        return fileList;
+    const entries = external_fs_.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+        if (entry.isDirectory()) {
+            if (!IGNORED_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
+                scanSourceFiles(external_path_.join(dir, entry.name), fileList);
+            }
+        }
+        else if (entry.isFile()) {
+            const ext = external_path_.extname(entry.name).toLowerCase();
+            if (SOURCE_EXTENSIONS.has(ext)) {
+                fileList.push(external_path_.join(dir, entry.name));
+            }
+        }
+    }
+    return fileList;
+}
+/**
+ * Detects unused dependencies in package.json by scanning source files.
+ */
+function detectUnusedDependencies(workspaceDir, options = {}) {
+    const pkgJsonPath = external_path_.join(workspaceDir, 'package.json');
+    if (!external_fs_.existsSync(pkgJsonPath)) {
+        return { unusedProd: [], unusedDev: [], totalUnused: 0, scannedFilesCount: 0 };
+    }
+    const pkgJson = JSON.parse(external_fs_.readFileSync(pkgJsonPath, 'utf8'));
+    const prodDeps = Object.keys(pkgJson.dependencies || {});
+    const devDeps = Object.keys(pkgJson.devDependencies || {});
+    const customIgnore = new Set(options.ignorePackages || []);
+    const sourceFiles = scanSourceFiles(workspaceDir);
+    const usedPackages = new Set();
+    for (const file of sourceFiles) {
+        try {
+            const code = external_fs_.readFileSync(file, 'utf8');
+            const imports = extractImportsFromCode(code);
+            imports.forEach((pkg) => usedPackages.add(pkg));
+        }
+        catch {
+            // ignore unreadable files
+        }
+    }
+    // Also check package.json scripts or binary commands if referenced
+    const scriptsContent = JSON.stringify(pkgJson.scripts || {});
+    for (const dep of [...prodDeps, ...devDeps]) {
+        if (scriptsContent.includes(dep)) {
+            usedPackages.add(dep);
+        }
+    }
+    // Filter unused production dependencies
+    const unusedProd = prodDeps.filter((pkg) => {
+        if (customIgnore.has(pkg))
+            return false;
+        return !usedPackages.has(pkg);
+    });
+    // Filter unused dev dependencies (skip tooling & @types)
+    const unusedDev = options.checkDevDeps
+        ? devDeps.filter((pkg) => {
+            if (customIgnore.has(pkg))
+                return false;
+            if (DEFAULT_IGNORED_DEV_PACKAGES.has(pkg))
+                return false;
+            if (pkg.startsWith('@types/'))
+                return false;
+            if (pkg.startsWith('@vercel/'))
+                return false;
+            if (pkg.startsWith('eslint-') || pkg.startsWith('@typescript-eslint/'))
+                return false;
+            return !usedPackages.has(pkg);
+        })
+        : [];
+    return {
+        unusedProd,
+        unusedDev,
+        totalUnused: unusedProd.length + unusedDev.length,
+        scannedFilesCount: sourceFiles.length
+    };
+}
+/**
+ * Prunes the specified unused dependencies from package.json.
+ */
+function pruneUnusedDependencies(workspaceDir, unusedPackages) {
+    const pkgJsonPath = external_path_.join(workspaceDir, 'package.json');
+    if (!external_fs_.existsSync(pkgJsonPath) || unusedPackages.length === 0) {
+        return { pruned: [], modified: false };
+    }
+    const pkgJson = JSON.parse(external_fs_.readFileSync(pkgJsonPath, 'utf8'));
+    const toRemove = new Set(unusedPackages);
+    const pruned = [];
+    if (pkgJson.dependencies) {
+        for (const pkg of Object.keys(pkgJson.dependencies)) {
+            if (toRemove.has(pkg)) {
+                delete pkgJson.dependencies[pkg];
+                pruned.push(pkg);
+            }
+        }
+    }
+    if (pkgJson.devDependencies) {
+        for (const pkg of Object.keys(pkgJson.devDependencies)) {
+            if (toRemove.has(pkg)) {
+                delete pkgJson.devDependencies[pkg];
+                pruned.push(pkg);
+            }
+        }
+    }
+    if (pruned.length > 0) {
+        external_fs_.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
+        return { pruned, modified: true };
+    }
+    return { pruned: [], modified: false };
+}
+
+;// CONCATENATED MODULE: ./src/badges.ts
+
+
+const PM_COLORS = {
+    npm: { color: 'CB3837', logo: 'npm' },
+    pnpm: { color: 'F69220', logo: 'pnpm' },
+    yarn: { color: '2C8EBB', logo: 'yarn' },
+    bun: { color: 'black', logo: 'bun' },
+    deno: { color: '000000', logo: 'deno' }
+};
+/**
+ * Generates Shields.io markdown badges based on SyncMyDep execution status.
+ */
+function generateBadges(options = {}) {
+    const repoLink = options.repoUrl || 'https://github.com/nivinvysakh/syncmydep';
+    // 1. Sync Status Badge
+    let syncLabel = 'In%20Sync';
+    let syncColor = '2ea44f';
+    if (options.status === 'fixed') {
+        syncLabel = 'Auto--Patched';
+        syncColor = 'blue';
+    }
+    else if (options.status === 'drift') {
+        syncLabel = 'Drift%20Detected';
+        syncColor = 'critical';
+    }
+    const syncBadge = `[![SyncMyDep](https://img.shields.io/badge/SyncMyDep-${syncLabel}-${syncColor}?logo=github-actions&logoColor=white)](${repoLink})`;
+    // 2. Vulnerability Badge
+    const vulnCount = options.vulnCount ?? 0;
+    const vulnLabel = vulnCount === 0 ? '0%20detected' : `${vulnCount}%20detected`;
+    const vulnColor = vulnCount === 0 ? 'brightgreen' : vulnCount > 5 ? 'critical' : 'yellow';
+    const vulnBadge = `[![Vulnerabilities](https://img.shields.io/badge/Vulnerabilities-${vulnLabel}-${vulnColor}?logo=security&logoColor=white)](${repoLink})`;
+    // 3. Package Manager Badge
+    const pm = options.pm || 'npm';
+    const pmInfo = PM_COLORS[pm] || { color: 'blue', logo: 'npm' };
+    const pmBadge = `[![Package Manager](https://img.shields.io/badge/Package%20Manager-${pm}-${pmInfo.color}?logo=${pmInfo.logo}&logoColor=white)](${repoLink})`;
+    // 4. Risk Badge
+    const risk = options.riskLevel || 'low';
+    let riskLabel = 'Low%20Risk';
+    let riskColor = 'brightgreen';
+    if (risk === 'moderate') {
+        riskLabel = 'Moderate%20Risk';
+        riskColor = 'yellow';
+    }
+    else if (risk === 'high') {
+        riskLabel = 'High%20Risk';
+        riskColor = 'red';
+    }
+    const riskBadge = `[![Risk Score](https://img.shields.io/badge/Risk%20Score-${riskLabel}-${riskColor})](${repoLink})`;
+    const combinedMarkdown = `${syncBadge} ${vulnBadge} ${pmBadge}`;
+    return {
+        syncBadge,
+        vulnBadge,
+        pmBadge,
+        riskBadge,
+        combinedMarkdown
+    };
+}
+/**
+ * Updates or inserts SyncMyDep status badges into README.md using comment markers.
+ */
+function updateReadmeBadges(workspaceDir, badgeMarkdown) {
+    const readmeNames = ['README.md', 'readme.md', 'Readme.md'];
+    let targetPath = '';
+    for (const name of readmeNames) {
+        const fullPath = external_path_.join(workspaceDir, name);
+        if (external_fs_.existsSync(fullPath)) {
+            targetPath = fullPath;
+            break;
+        }
+    }
+    if (!targetPath) {
+        targetPath = external_path_.join(workspaceDir, 'README.md');
+        external_fs_.writeFileSync(targetPath, `# Project
+
+<!-- syncmydep:start -->
+${badgeMarkdown}
+<!-- syncmydep:end -->
+`);
+        return { updated: true, filePath: targetPath };
+    }
+    const content = external_fs_.readFileSync(targetPath, 'utf8');
+    const startMarker = '<!-- syncmydep:start -->';
+    const endMarker = '<!-- syncmydep:end -->';
+    const block = `${startMarker}\n${badgeMarkdown}\n${endMarker}`;
+    if (content.includes(startMarker) && content.includes(endMarker)) {
+        const pattern = new RegExp(`${startMarker}[\\s\\S]*?${endMarker}`, 'g');
+        const updated = content.replace(pattern, block);
+        external_fs_.writeFileSync(targetPath, updated);
+        return { updated: true, filePath: targetPath };
+    }
+    // Prepend after the first markdown heading if present
+    const lines = content.split('\n');
+    if (lines.length > 0 && lines[0].startsWith('# ')) {
+        lines.splice(1, 0, '\n' + block + '\n');
+        external_fs_.writeFileSync(targetPath, lines.join('\n'));
+        return { updated: true, filePath: targetPath };
+    }
+    // Prepend at the top
+    external_fs_.writeFileSync(targetPath, block + '\n\n' + content);
+    return { updated: true, filePath: targetPath };
+}
+
 ;// CONCATENATED MODULE: ./src/cli.ts
+
+
+
 
 
 
@@ -31854,7 +32340,7 @@ function generateDockerDumpMarkdown(data) {
 - **Package Manager**: \`${data.pm}${data.yarnVariant ? ` (${data.yarnVariant})` : ''}\`
 - **Workspace Type**: ${data.isMonorepo ? `\`Monorepo (${data.monorepoType}, ${data.packageCount} packages)\`` : '`Single Package`'}
 - **Mode**: ${data.checkOnly ? '`Check-Only (CI Linter)`' : '`Full Auto-Fix & Sync`'}
-
+${data.riskScore ? `- **Breaking Change Risk**: ${data.riskScore.badge}\n` : ''}
 ---
 
 ## 📊 Summary of Results
@@ -31865,7 +32351,7 @@ function generateDockerDumpMarkdown(data) {
 | **Ghost Lockfiles Purged** | ${data.sanitizedLockfiles && data.sanitizedLockfiles.length > 0 ? `🧹 Removed ${data.sanitizedLockfiles.length} (${data.sanitizedLockfiles.map((f) => `\`${f}\``).join(', ')})` : '_None (Clean workspace)_'} |
 | **Vulnerabilities Found** | \`${vulnsBefore}\` |
 | **Vulnerabilities After Fix** | \`${vulnsAfter}\` ${vulnsFixed > 0 ? `(🎉 Patched ${vulnsFixed})` : ''} |
-| **Files Modified** | ${data.changedFiles.length > 0 ? data.changedFiles.map((f) => `\`${f}\``).join(', ') : '_None (Already in sync)_'} |
+${data.unusedDeps ? `| **Unused Dependencies** | \`${data.unusedDeps.totalUnused}\` candidate(s) |\n` : ''}| **Files Modified** | ${data.changedFiles.length > 0 ? data.changedFiles.map((f) => `\`${f}\``).join(', ') : '_None (Already in sync)_'} |
 
 ---
 
@@ -31897,15 +32383,67 @@ async function runCli() {
     // Ensure sub-commands don't dump hundreds of lines of noise into stdout and run in non-interactive CI mode
     process.env.SYNCMYDEP_SILENT = 'true';
     process.env.CI = 'true';
+    const args = process.argv.slice(2);
+    const command = args[0]?.toLowerCase();
     const workingDir = process.env.INPUT_WORKING_DIRECTORY || process.cwd();
     const workspaceDir = external_path_.resolve(process.cwd(), workingDir);
     const fileConfig = loadConfigFile(workspaceDir);
+    // Subcommand: prune
+    if (command === 'prune') {
+        console.log('\n=============================================================');
+        console.log('            🧹 SyncMyDep: Unused Dependency Pruner           ');
+        console.log('=============================================================');
+        console.log(`📁 Directory: ${workspaceDir}`);
+        const unused = detectUnusedDependencies(workspaceDir, {
+            ignorePackages: fileConfig.ignoreUnusedPackages,
+            checkDevDeps: true
+        });
+        if (unused.totalUnused === 0) {
+            console.log('✅ No unused dependencies detected. Your project is clean!');
+            console.log('=============================================================\n');
+            return;
+        }
+        console.log(`🧹 Found ${unused.totalUnused} unused package(s):`);
+        if (unused.unusedProd.length > 0)
+            console.log(`   - Production: ${unused.unusedProd.join(', ')}`);
+        if (unused.unusedDev.length > 0)
+            console.log(`   - Development: ${unused.unusedDev.join(', ')}`);
+        const allUnused = [...unused.unusedProd, ...unused.unusedDev];
+        const { pruned } = pruneUnusedDependencies(workspaceDir, allUnused);
+        console.log(`✨ Pruned ${pruned.length} package(s) from package.json!`);
+        const pm = detectPackageManager(workspaceDir, fileConfig.packageManager);
+        console.log(`🔄 Synchronizing lockfile using ${pm}...`);
+        await syncLockfile(workspaceDir, pm);
+        console.log('✅ Pruning and lockfile synchronization complete!');
+        console.log('=============================================================\n');
+        return;
+    }
+    // Subcommand: badge
+    if (command === 'badge') {
+        const shouldUpdate = args.includes('--update') || Boolean(fileConfig.updateReadmeBadge);
+        const pm = detectPackageManager(workspaceDir, fileConfig.packageManager);
+        const badges = generateBadges({ pm, status: 'synced', vulnCount: 0, riskLevel: 'low' });
+        console.log('\n=============================================================');
+        console.log('            📊 SyncMyDep: README Status Badges               ');
+        console.log('=============================================================');
+        console.log(badges.combinedMarkdown);
+        if (shouldUpdate) {
+            const res = updateReadmeBadges(workspaceDir, badges.combinedMarkdown);
+            console.log(`\n✅ Successfully updated README badges at: ${res.filePath}`);
+        }
+        else {
+            console.log('\n💡 Tip: Run `syncmydep badge --update` to insert these badges into README.md automatically.');
+        }
+        console.log('=============================================================\n');
+        return;
+    }
     const pmInput = process.env.INPUT_PACKAGE_MANAGER || fileConfig.packageManager || 'auto';
     const syncLockfileOption = parseBool(process.env.INPUT_SYNC_LOCKFILE, fileConfig.syncLockfile ?? true);
     const fixAuditOption = parseBool(process.env.INPUT_FIX_AUDIT, fileConfig.fixAudit ?? true);
     const auditLevel = process.env.INPUT_AUDIT_LEVEL || fileConfig.auditLevel || 'moderate';
     const checkOnly = parseBool(process.env.INPUT_CHECK_ONLY, fileConfig.checkOnly ?? false);
     const dedupeOption = parseBool(process.env.INPUT_DEDUPE, fileConfig.dedupe ?? false);
+    const detectUnusedOption = parseBool(process.env.INPUT_DETECT_UNUSED_DEPS, fileConfig.detectUnusedDeps ?? true);
     console.log('\n=============================================================');
     console.log('                 🔄 SyncMyDep Local Runner                  ');
     console.log('=============================================================');
@@ -31970,6 +32508,16 @@ async function runCli() {
         const dedupeRes = await runDedupe(workspaceDir, pm, yarnVariant);
         dedupeLog = dedupeRes?.output ?? '';
     }
+    let unusedDeps;
+    if (detectUnusedOption) {
+        unusedDeps = detectUnusedDependencies(workspaceDir, {
+            ignorePackages: fileConfig.ignoreUnusedPackages,
+            checkDevDeps: true
+        });
+        if (unusedDeps.totalUnused > 0) {
+            console.log(`🧹 Unused Deps:     Found ${unusedDeps.totalUnused} candidate(s)`);
+        }
+    }
     const integrity = await verifyLockfileIntegrity(workspaceDir, pm, yarnVariant);
     if (integrity.success) {
         console.log(`✅ Lockfile:        Integrity verified`);
@@ -31978,6 +32526,8 @@ async function runCli() {
         console.warn(`⚠️  Lockfile warning: ${integrity.output}`);
     }
     const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
+    const diffs = await parseDependencyDiffs(workspaceDir, changedFiles);
+    const riskScore = calculateRiskScore(diffs);
     // Write markdown dump file
     const dumpMarkdown = generateDockerDumpMarkdown({
         workspaceDir,
@@ -31996,7 +32546,9 @@ async function runCli() {
         integrityLog: integrity.output,
         changedFiles,
         sanitizedLockfiles,
-        checkOnly
+        checkOnly,
+        riskScore,
+        unusedDeps
     });
     let dumpSaved = false;
     const dumpFilePath = external_path_.join(workspaceDir, 'log_docker_dump.md');
@@ -32050,6 +32602,7 @@ async function runCli() {
     else {
         console.log(`✨ Successfully synchronized and updated local files:`);
         changedFiles.forEach((file) => console.log(`   - ${file}`));
+        console.log(`🛡️  Risk Level:      ${riskScore.badge}`);
         if (auditBefore && auditAfter && auditBefore.total > auditAfter.total) {
             console.log(`🛡️  Fixed ${auditBefore.total - auditAfter.total} vulnerabilities!`);
         }

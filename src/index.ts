@@ -37,7 +37,11 @@ import { ensurePackageManagerInstalled } from './installer';
 import { restorePackageCache, savePackageCache } from './cache';
 import { rebaseAndRedoProcess, deleteRemoteBranch } from './rebase-pr';
 import { buildMarkdownSummary, buildCommentSummary } from './summary';
-import { AuditInspectionResult, BuildVerificationResult } from './types';
+import { calculateRiskScore } from './risk';
+import { buildChangelogSummaries } from './changelog';
+import { detectUnusedDependencies, pruneUnusedDependencies } from './unused-deps';
+import { generateBadges, updateReadmeBadges } from './badges';
+import { AuditInspectionResult, BuildVerificationResult, UnusedDependencyResult } from './types';
 
 async function run(): Promise<void> {
   try {
@@ -101,6 +105,21 @@ async function run(): Promise<void> {
     const cacheOption = core.getInput('cache') !== ''
       ? core.getBooleanInput('cache')
       : fileConfig.cache ?? true;
+    const detectUnusedDepsOption = core.getInput('detect-unused-deps') !== ''
+      ? core.getBooleanInput('detect-unused-deps')
+      : fileConfig.detectUnusedDeps ?? true;
+    const pruneUnusedDepsOption = core.getInput('prune-unused-deps') !== ''
+      ? core.getBooleanInput('prune-unused-deps')
+      : fileConfig.pruneUnusedDeps ?? false;
+    const showChangelogsOption = core.getInput('show-changelogs') !== ''
+      ? core.getBooleanInput('show-changelogs')
+      : fileConfig.showChangelogs ?? true;
+    const riskScoringOption = core.getInput('risk-scoring') !== ''
+      ? core.getBooleanInput('risk-scoring')
+      : fileConfig.riskScoring ?? true;
+    const updateReadmeBadgeOption = core.getInput('update-readme-badge') !== ''
+      ? core.getBooleanInput('update-readme-badge')
+      : fileConfig.updateReadmeBadge ?? false;
 
     const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : ['dependencies', 'SyncMyDep'];
     const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
@@ -431,6 +450,28 @@ async function run(): Promise<void> {
       }
     }
 
+    // Unused Dependency Scanner
+    let unusedDepsResult: UnusedDependencyResult | undefined;
+    if (detectUnusedDepsOption) {
+      core.info('[SyncMyDep] 🔍 Scanning source code for unused dependencies...');
+      unusedDepsResult = detectUnusedDependencies(workspaceDir, {
+        ignorePackages,
+        checkDevDeps: true
+      });
+      if (unusedDepsResult.totalUnused > 0) {
+        core.info(`[SyncMyDep] 🧹 Detected ${unusedDepsResult.totalUnused} unused dependency candidates.`);
+        if (pruneUnusedDepsOption) {
+          core.info('[SyncMyDep] Pruning unused dependencies from package.json...');
+          const allUnused = [...unusedDepsResult.unusedProd, ...unusedDepsResult.unusedDev];
+          const { pruned } = pruneUnusedDependencies(workspaceDir, allUnused);
+          if (pruned.length > 0) {
+            core.info(`[SyncMyDep] ✅ Pruned unused dependencies: ${pruned.join(', ')}. Resyncing lockfile...`);
+            await syncLockfile(workspaceDir, pm, yarnVariant);
+          }
+        }
+      }
+    }
+
     const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
 
     // 6. Check-Only / CI Gating Mode
@@ -495,6 +536,25 @@ async function run(): Promise<void> {
     const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
     const dependencyDiffs = await parseDependencyDiffs(workspaceDir, changedFiles);
 
+    const riskScore = riskScoringOption ? calculateRiskScore(dependencyDiffs) : undefined;
+    const changelogs = showChangelogsOption ? buildChangelogSummaries(workspaceDir, dependencyDiffs) : undefined;
+
+    const badgesResult = generateBadges({
+      status: 'fixed',
+      pm,
+      vulnCount: auditAfter?.total ?? auditBefore?.total ?? 0,
+      riskLevel: riskScore?.overallLevel || 'low',
+      repoUrl: github.context.repo.owner ? `https://github.com/${github.context.repo.owner}/${github.context.repo.repo}` : undefined
+    });
+
+    if (updateReadmeBadgeOption) {
+      const { updated, filePath } = updateReadmeBadges(workspaceDir, badgesResult.combinedMarkdown);
+      const relPath = path.relative(workspaceDir, filePath);
+      if (updated && !changedFiles.includes(relPath)) {
+        changedFiles.push(relPath);
+      }
+    }
+
     const prBody = buildMarkdownSummary({
       pm,
       yarnVariant,
@@ -511,7 +571,11 @@ async function run(): Promise<void> {
       lockfileVerified,
       buildResult,
       prHeader,
-      prFooter
+      prFooter,
+      riskScore,
+      changelogs,
+      unusedDeps: unusedDepsResult,
+      badgesMarkdown: badgesResult.combinedMarkdown
     });
 
     if (!token) {

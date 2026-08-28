@@ -16,6 +16,10 @@
 ## ✨ Features
 
 - 🔍 **Lockfile Synchronization**: Detects discrepancies when dependencies are added, updated, or removed in package manifests without updating the lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`/`bun.lockb`, `deno.lock`).
+- 🛡️ **Breaking Change Risk & Compatibility Scoring**: Analyzes SemVer distance across upgraded dependencies and assigns intuitive risk indicators (`🟢 Low`, `🟡 Moderate`, `🔴 High`) to protect master/main branches.
+- 📖 **Smart Changelogs & Release Notes Integration**: Resolves package repositories and embeds GitHub release notes and compare diff links directly into the PR description.
+- 🧹 **Orphan & Unused Dependency Scanner & Pruner**: Scans JS, TS, JSX, TSX, Vue, Svelte, and Astro source code to detect un-imported dependencies and cleanly prunes them via CLI or workflow (`npx syncmydep prune`).
+- 📊 **Dynamic Status Badges**: Generates Shields.io badges for sync health, security status, package manager, and risk scores, automatically injected into `README.md`.
 - 🛡️ **Vulnerability Remediation**: Runs security audit fixes (`npm audit fix`, `pnpm audit --fix`, `yarn audit`, `bun pm audit`) to resolve known security vulnerabilities.
 - 📦 **Modern Multi-Package Manager Support**: Seamless out-of-the-box support for:
   - **npm**
@@ -240,17 +244,24 @@ pr-labels:
 comment-trigger: "syncdep"
 require-owner: true
 
-# Verification & Performance
+# Verification & Safety
 verify-lockfile: true
 run-build: "npm run build"
 fail-on-build-error: false
 auto-merge: false
 cache: true
 step-summary: true
+risk-scoring: true # 🛡️ Calculate breaking change risk
+show-changelogs: true # 📖 Generate release notes & compare diffs
+detect-unused-deps: true # 🔍 Identify un-imported dependencies
+prune-unused-deps: false # 🧹 Auto-prune unused dependencies
+update-readme-badge: false # 📊 Auto-insert Shields.io badges into README
 
 # Package Filters & Monorepos
 ignore-packages:
   - "@internal/legacy-sdk"
+ignore-unused-packages:
+  - "eslint"
 monorepo:
   root-only: false
   ignore:
@@ -261,38 +272,43 @@ monorepo:
 
 ## ⚙️ Inputs Reference
 
-| Input                 | Description                                                                          | Required | Default                                                     |
-| :-------------------- | :----------------------------------------------------------------------------------- | :------: | :---------------------------------------------------------- |
-| `github-token`        | GitHub token for git push and opening PRs (`${{ secrets.GH_PAT \|\| secrets.GITHUB_TOKEN }}`) |   Yes    | `${{ github.token }}`                                       |
-| `package-manager`     | Package manager: `auto`, `npm`, `yarn`, `pnpm`, `bun`, `deno`                        |    No    | `auto`                                                      |
-| `working-directory`   | Path to directory containing package manifest and lockfile                           |    No    | `.`                                                         |
-| `config-file`         | Optional path to custom `.syncmydep.yml` config file                                 |    No    | `""`                                                        |
-| `sync-lockfile`       | Synchronize lockfile with package specifications                                     |    No    | `true`                                                      |
-| `fix-audit`           | Run security vulnerability auto-fix                                                  |    No    | `true`                                                      |
-| `audit-level`         | Minimum vulnerability severity: `low`, `moderate`, `high`, `critical`                |    No    | `moderate`                                                  |
-| `dedupe`              | Automatically deduplicate transitive dependencies in lockfile                       |    No    | `false`                                                     |
-| `check-only`          | Dry-run CI gating mode that emits step annotations and exits with code `1` on desync |    No    | `false`                                                     |
-| `direct-push`         | Commit and push directly to open PR branch on `pull_request` triggers                |    No    | `false`                                                     |
-| `base-branch`         | Custom base branch to target for PRs instead of default branch                       |    No    | `""`                                                        |
-| `pr-draft`            | Create the Pull Request as a Draft PR (`"true"` / `"false"`)                         |    No    | `false`                                                     |
-| `pr-branch`           | Branch name to push fixes to                                                         |    No    | `syncmydep/dependency-fix`                                  |
-| `pr-title`            | Title for the generated Pull Request                                                 |    No    | `chore(deps): synchronize package.json and lockfile issues` |
-| `commit-message`      | Commit message for the updates                                                       |    No    | `chore(deps): synchronize package.json and lockfile issues` |
-| `pr-labels`           | Comma-separated labels to attach to the PR                                           |    No    | `dependencies, automated-pr`                                |
-| `pr-assignees`        | Comma-separated usernames to assign                                                  |    No    | `""`                                                        |
-| `pr-reviewers`        | Comma-separated usernames to request review from                                     |    No    | `""`                                                        |
-| `pr-header`           | Custom Markdown text prepended to the generated PR description                       |    No    | `""`                                                        |
-| `pr-footer`           | Custom Markdown text appended to the generated PR description                        |    No    | `""`                                                        |
-| `ignore-packages`     | Comma-separated package names to ignore from sync or audit updates                   |    No    | `""`                                                        |
-| `step-summary`        | Render visual markdown dashboard to GitHub Actions Step Summary                      |    No    | `true`                                                      |
-| `comment-trigger`     | Keyword that triggers sync on a PR comment                                           |    No    | `syncdep`                                                   |
-| `require-owner`       | Restrict comment trigger commands strictly to repository owners                      |    No    | `true`                                                      |
-| `verify-lockfile`     | Run dry-run frozen installation check on generated lockfile                          |    No    | `true`                                                      |
-| `run-build`           | Optional build smoke test command (e.g. `npm run build`) before opening PR           |    No    | `""`                                                        |
-| `fail-on-build-error` | Abort and fail if build smoke test encounters an error                               |    No    | `false`                                                     |
-| `auto-merge`          | Automatically enable auto-merge on the created Pull Request                          |    No    | `false`                                                     |
-| `auto-merge-method`   | Auto-merge strategy: `squash`, `merge`, or `rebase`                                  |    No    | `squash`                                                    |
-| `cache`               | Automatically restore and save package manager dependency caches                     |    No    | `true`                                                      |
+| Input                    | Description                                                                          | Required | Default                                                     |
+| :----------------------- | :----------------------------------------------------------------------------------- | :------: | :---------------------------------------------------------- |
+| `github-token`           | GitHub token for git push and opening PRs (`${{ secrets.GH_PAT \|\| secrets.GITHUB_TOKEN }}`) |   Yes    | `${{ github.token }}`                                       |
+| `package-manager`        | Package manager: `auto`, `npm`, `yarn`, `pnpm`, `bun`, `deno`                        |    No    | `auto`                                                      |
+| `working-directory`      | Path to directory containing package manifest and lockfile                           |    No    | `.`                                                         |
+| `config-file`            | Optional path to custom `.syncmydep.yml` config file                                 |    No    | `""`                                                        |
+| `sync-lockfile`          | Synchronize lockfile with package specifications                                     |    No    | `true`                                                      |
+| `fix-audit`              | Run security vulnerability auto-fix                                                  |    No    | `true`                                                      |
+| `audit-level`            | Minimum vulnerability severity: `low`, `moderate`, `high`, `critical`                |    No    | `moderate`                                                  |
+| `dedupe`                 | Automatically deduplicate transitive dependencies in lockfile                       |    No    | `false`                                                     |
+| `check-only`             | Dry-run CI gating mode that emits step annotations and exits with code `1` on desync |    No    | `false`                                                     |
+| `direct-push`            | Commit and push directly to open PR branch on `pull_request` triggers                |    No    | `false`                                                     |
+| `base-branch`            | Custom base branch to target for PRs instead of default branch                       |    No    | `""`                                                        |
+| `pr-draft`               | Create the Pull Request as a Draft PR (`"true"` / `"false"`)                         |    No    | `false`                                                     |
+| `pr-branch`              | Branch name to push fixes to                                                         |    No    | `syncmydep/dependency-fix`                                  |
+| `pr-title`               | Title for the generated Pull Request                                                 |    No    | `chore(deps): synchronize package.json and lockfile issues` |
+| `commit-message`         | Commit message for the updates                                                       |    No    | `chore(deps): synchronize package.json and lockfile issues` |
+| `pr-labels`              | Comma-separated labels to attach to the PR                                           |    No    | `dependencies, automated-pr`                                |
+| `pr-assignees`           | Comma-separated usernames to assign                                                  |    No    | `""`                                                        |
+| `pr-reviewers`           | Comma-separated usernames to request review from                                     |    No    | `""`                                                        |
+| `pr-header`              | Custom Markdown text prepended to the generated PR description                       |    No    | `""`                                                        |
+| `pr-footer`              | Custom Markdown text appended to the generated PR description                        |    No    | `""`                                                        |
+| `ignore-packages`        | Comma-separated package names to ignore from sync or audit updates                   |    No    | `""`                                                        |
+| `detect-unused-deps`     | Scan source files for unused dependencies (`"true"` / `"false"`)                     |    No    | `true`                                                      |
+| `prune-unused-deps`      | Automatically remove unused dependencies from package.json (`"true"` / `"false"`)   |    No    | `false`                                                     |
+| `show-changelogs`        | Include changelog and compare diff links in PR summary (`"true"` / `"false"`)       |    No    | `true`                                                      |
+| `risk-scoring`           | Calculate breaking change risk level and compatibility badge (`"true"` / `"false"`)  |    No    | `true`                                                      |
+| `update-readme-badge`    | Automatically insert/update SyncMyDep status badges in README.md (`"true"` / `"false"`)| No   | `false`                                                     |
+| `step-summary`           | Render visual markdown dashboard to GitHub Actions Step Summary                      |    No    | `true`                                                      |
+| `comment-trigger`        | Keyword that triggers sync on a PR comment                                           |    No    | `syncdep`                                                   |
+| `require-owner`          | Restrict comment trigger commands strictly to repository owners                      |    No    | `true`                                                      |
+| `verify-lockfile`        | Run dry-run frozen installation check on generated lockfile                          |    No    | `true`                                                      |
+| `run-build`              | Optional build smoke test command (e.g. `npm run build`) before opening PR           |    No    | `""`                                                        |
+| `fail-on-build-error`    | Abort and fail if build smoke test encounters an error                               |    No    | `false`                                                     |
+| `auto-merge`             | Automatically enable auto-merge on the created Pull Request                          |    No    | `false`                                                     |
+| `auto-merge-method`      | Auto-merge strategy: `squash`, `merge`, or `rebase`                                  |    No    | `squash`                                                    |
+| `cache`                  | Automatically restore and save package manager dependency caches                     |    No    | `true`                                                      |
 
 ---
 

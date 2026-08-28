@@ -128,6 +128,12 @@ function normalizeConfig(raw: Record<string, unknown>): SyncMyDepConfig {
     failOnBuildError: getVal<boolean>('failOnBuildError', 'fail-on-build-error', 'fail_on_build_error'),
     autoMerge: getVal<boolean>('autoMerge', 'auto-merge', 'auto_merge'),
     autoMergeMethod: getVal<'squash' | 'merge' | 'rebase'>('autoMergeMethod', 'auto-merge-method', 'auto_merge_method'),
-    cache: getVal<boolean>('cache', 'cache')
+    cache: getVal<boolean>('cache', 'cache'),
+    detectUnusedDeps: getVal<boolean>('detectUnusedDeps', 'detect-unused-deps', 'detect_unused_deps', 'unusedDeps', 'unused-deps'),
+    pruneUnusedDeps: getVal<boolean>('pruneUnusedDeps', 'prune-unused-deps', 'prune_unused_deps', 'prune'),
+    ignoreUnusedPackages: normalizeList(getVal<string[] | string>('ignoreUnusedPackages', 'ignore-unused-packages', 'ignore_unused_packages')),
+    showChangelogs: getVal<boolean>('showChangelogs', 'show-changelogs', 'show_changelogs', 'changelogs'),
+    riskScoring: getVal<boolean>('riskScoring', 'risk-scoring', 'risk_scoring', 'risk'),
+    updateReadmeBadge: getVal<boolean>('updateReadmeBadge', 'update-readme-badge', 'update_readme_badge', 'readmeBadge', 'readme-badge')
   };
 }

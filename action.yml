@@ -100,6 +100,21 @@ inputs:
   ignore-packages:
     description: 'Comma-separated package names to ignore from sync or audit updates.'
     required: false
+  detect-unused-deps:
+    description: 'Whether to scan and report unused dependencies in the PR ("true" or "false").'
+    required: false
+  prune-unused-deps:
+    description: 'Whether to automatically remove detected unused dependencies from package.json ("true" or "false").'
+    required: false
+  show-changelogs:
+    description: 'Whether to fetch and include package changelog and release diff links in the PR ("true" or "false").'
+    required: false
+  risk-scoring:
+    description: 'Whether to calculate and display breaking change risk scores in the PR ("true" or "false").'
+    required: false
+  update-readme-badge:
+    description: 'Whether to automatically insert or update SyncMyDep status badges in README.md ("true" or "false").'
+    required: false
 
 outputs:
   changes-detected:

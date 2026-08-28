@@ -47,9 +47,10 @@ describe('summary builder', () => {
       commenter: 'nivinvysakh'
     });
 
-    expect(comment).toContain('SyncMyDep: Dependencies Synchronized on `feature/auth-fix`');
+    expect(comment).toContain('SyncMyDep Dependency Fix Applied');
     expect(comment).toContain('`yarn (berry)`');
     expect(comment).toContain('@nivinvysakh');
+    expect(comment).toContain('`feature/auth-fix`');
     expect(comment).toContain('`yarn.lock`');
     expect(comment).toContain('🔄 Synchronized & Pushed');
   });
@@ -156,5 +157,61 @@ describe('summary builder', () => {
     expect(comment).toContain('⚠️ Custom Comment Header');
     expect(comment).toContain('📞 Custom Comment Footer');
     expect(comment).toContain('Lockfile Deduplication**: ✅ Applied');
+  });
+
+  test('renders risk scoring, changelogs, unused deps, and badges markdown in summary', () => {
+    const summary = buildMarkdownSummary({
+      pm: 'pnpm',
+      changedFiles: ['pnpm-lock.yaml'],
+      diffStat: '',
+      syncedLockfile: true,
+      fixedAudit: true,
+      auditBefore: null,
+      auditAfter: null,
+      riskScore: {
+        overallLevel: 'high',
+        score: 8,
+        badge: '🔴 **High Risk** (Manual Review Strongly Advised)',
+        summary: 'Contains 1 major version bump(s).',
+        factors: [
+          {
+            package: 'next',
+            level: 'high',
+            reason: 'Major SemVer jump (13 ➔ 14)',
+            fromVersion: '13.5.0',
+            toVersion: '14.0.0'
+          }
+        ],
+        safeToAutoMerge: false
+      },
+      changelogs: [
+        {
+          package: 'next',
+          fromVersion: '13.5.0',
+          toVersion: '14.0.0',
+          releaseUrl: 'https://github.com/vercel/next.js/releases/tag/v14.0.0',
+          diffUrl: 'https://github.com/vercel/next.js/compare/v13.5.0...v14.0.0',
+          notesSummary: '[Release Notes](https://github.com/vercel/next.js/releases/tag/v14.0.0) | [View Diff](https://github.com/vercel/next.js/compare/v13.5.0...v14.0.0)'
+        }
+      ],
+      unusedDeps: {
+        unusedProd: ['moment'],
+        unusedDev: ['eslint-plugin-legacy'],
+        scannedFilesCount: 25,
+        totalUnused: 2
+      },
+      badgesMarkdown: '[![SyncMyDep](https://img.shields.io/badge/SyncMyDep-In%20Sync-2ea44f)](https://github.com/nivinvysakh/syncmydep)'
+    });
+
+    expect(summary).toContain('Breaking Change Risk**: 🔴 **High Risk**');
+    expect(summary).toContain('Breaking Change Risk & Compatibility Analysis');
+    expect(summary).toContain('`next`');
+    expect(summary).toContain('Major SemVer jump');
+    expect(summary).toContain('Dependency Changelogs & Release Notes');
+    expect(summary).toContain('https://github.com/vercel/next.js/compare/v13.5.0...v14.0.0');
+    expect(summary).toContain('Unused Dependencies Detected');
+    expect(summary).toContain('`moment`');
+    expect(summary).toContain('`eslint-plugin-legacy`');
+    expect(summary).toContain('SyncMyDep-In%20Sync-2ea44f');
   });
 });

@@ -12,11 +12,15 @@ import {
   runAuditFix,
   runDedupe,
   getGitStatus,
-  verifyLockfileIntegrity
+  verifyLockfileIntegrity,
+  parseDependencyDiffs
 } from './fixer';
 import { loadConfigFile } from './config';
 import { detectWorkspace, sanitizeWorkspaceLockfiles } from './workspace';
-import { AuditInspectionResult } from './types';
+import { calculateRiskScore } from './risk';
+import { detectUnusedDependencies, pruneUnusedDependencies } from './unused-deps';
+import { generateBadges, updateReadmeBadges } from './badges';
+import { AuditInspectionResult, RiskScoreResult, UnusedDependencyResult } from './types';
 
 export function parseBool(val: string | undefined, defaultVal: boolean): boolean {
   if (val === undefined || val === '') return defaultVal;
@@ -50,6 +54,8 @@ export function generateDockerDumpMarkdown(data: {
   changedFiles: string[];
   sanitizedLockfiles?: string[];
   checkOnly: boolean;
+  riskScore?: RiskScoreResult;
+  unusedDeps?: UnusedDependencyResult;
 }): string {
   const timestamp = new Date().toISOString();
   const vulnsBefore = data.auditBefore?.total ?? 0;
@@ -67,7 +73,7 @@ export function generateDockerDumpMarkdown(data: {
 - **Package Manager**: \`${data.pm}${data.yarnVariant ? ` (${data.yarnVariant})` : ''}\`
 - **Workspace Type**: ${data.isMonorepo ? `\`Monorepo (${data.monorepoType}, ${data.packageCount} packages)\`` : '`Single Package`'}
 - **Mode**: ${data.checkOnly ? '`Check-Only (CI Linter)`' : '`Full Auto-Fix & Sync`'}
-
+${data.riskScore ? `- **Breaking Change Risk**: ${data.riskScore.badge}\n` : ''}
 ---
 
 ## 📊 Summary of Results
@@ -78,7 +84,7 @@ export function generateDockerDumpMarkdown(data: {
 | **Ghost Lockfiles Purged** | ${data.sanitizedLockfiles && data.sanitizedLockfiles.length > 0 ? `🧹 Removed ${data.sanitizedLockfiles.length} (${data.sanitizedLockfiles.map((f) => `\`${f}\``).join(', ')})` : '_None (Clean workspace)_'} |
 | **Vulnerabilities Found** | \`${vulnsBefore}\` |
 | **Vulnerabilities After Fix** | \`${vulnsAfter}\` ${vulnsFixed > 0 ? `(🎉 Patched ${vulnsFixed})` : ''} |
-| **Files Modified** | ${data.changedFiles.length > 0 ? data.changedFiles.map((f) => `\`${f}\``).join(', ') : '_None (Already in sync)_'} |
+${data.unusedDeps ? `| **Unused Dependencies** | \`${data.unusedDeps.totalUnused}\` candidate(s) |\n` : ''}| **Files Modified** | ${data.changedFiles.length > 0 ? data.changedFiles.map((f) => `\`${f}\``).join(', ') : '_None (Already in sync)_'} |
 
 ---
 
@@ -112,10 +118,66 @@ export async function runCli(): Promise<void> {
   process.env.SYNCMYDEP_SILENT = 'true';
   process.env.CI = 'true';
 
+  const args = process.argv.slice(2);
+  const command = args[0]?.toLowerCase();
+
   const workingDir = process.env.INPUT_WORKING_DIRECTORY || process.cwd();
   const workspaceDir = path.resolve(process.cwd(), workingDir);
 
   const fileConfig = loadConfigFile(workspaceDir);
+
+  // Subcommand: prune
+  if (command === 'prune') {
+    console.log('\n=============================================================');
+    console.log('            🧹 SyncMyDep: Unused Dependency Pruner           ');
+    console.log('=============================================================');
+    console.log(`📁 Directory: ${workspaceDir}`);
+    const unused = detectUnusedDependencies(workspaceDir, {
+      ignorePackages: fileConfig.ignoreUnusedPackages,
+      checkDevDeps: true
+    });
+
+    if (unused.totalUnused === 0) {
+      console.log('✅ No unused dependencies detected. Your project is clean!');
+      console.log('=============================================================\n');
+      return;
+    }
+
+    console.log(`🧹 Found ${unused.totalUnused} unused package(s):`);
+    if (unused.unusedProd.length > 0) console.log(`   - Production: ${unused.unusedProd.join(', ')}`);
+    if (unused.unusedDev.length > 0) console.log(`   - Development: ${unused.unusedDev.join(', ')}`);
+
+    const allUnused = [...unused.unusedProd, ...unused.unusedDev];
+    const { pruned } = pruneUnusedDependencies(workspaceDir, allUnused);
+    console.log(`✨ Pruned ${pruned.length} package(s) from package.json!`);
+    const pm = detectPackageManager(workspaceDir, fileConfig.packageManager);
+    console.log(`🔄 Synchronizing lockfile using ${pm}...`);
+    await syncLockfile(workspaceDir, pm);
+    console.log('✅ Pruning and lockfile synchronization complete!');
+    console.log('=============================================================\n');
+    return;
+  }
+
+  // Subcommand: badge
+  if (command === 'badge') {
+    const shouldUpdate = args.includes('--update') || Boolean(fileConfig.updateReadmeBadge);
+    const pm = detectPackageManager(workspaceDir, fileConfig.packageManager);
+    const badges = generateBadges({ pm, status: 'synced', vulnCount: 0, riskLevel: 'low' });
+
+    console.log('\n=============================================================');
+    console.log('            📊 SyncMyDep: README Status Badges               ');
+    console.log('=============================================================');
+    console.log(badges.combinedMarkdown);
+
+    if (shouldUpdate) {
+      const res = updateReadmeBadges(workspaceDir, badges.combinedMarkdown);
+      console.log(`\n✅ Successfully updated README badges at: ${res.filePath}`);
+    } else {
+      console.log('\n💡 Tip: Run `syncmydep badge --update` to insert these badges into README.md automatically.');
+    }
+    console.log('=============================================================\n');
+    return;
+  }
 
   const pmInput = process.env.INPUT_PACKAGE_MANAGER || fileConfig.packageManager || 'auto';
   const syncLockfileOption = parseBool(process.env.INPUT_SYNC_LOCKFILE, fileConfig.syncLockfile ?? true);
@@ -123,6 +185,7 @@ export async function runCli(): Promise<void> {
   const auditLevel = process.env.INPUT_AUDIT_LEVEL || fileConfig.auditLevel || 'moderate';
   const checkOnly = parseBool(process.env.INPUT_CHECK_ONLY, fileConfig.checkOnly ?? false);
   const dedupeOption = parseBool(process.env.INPUT_DEDUPE, fileConfig.dedupe ?? false);
+  const detectUnusedOption = parseBool(process.env.INPUT_DETECT_UNUSED_DEPS, fileConfig.detectUnusedDeps ?? true);
 
   console.log('\n=============================================================');
   console.log('                 🔄 SyncMyDep Local Runner                  ');
@@ -198,6 +261,17 @@ export async function runCli(): Promise<void> {
     dedupeLog = dedupeRes?.output ?? '';
   }
 
+  let unusedDeps: UnusedDependencyResult | undefined;
+  if (detectUnusedOption) {
+    unusedDeps = detectUnusedDependencies(workspaceDir, {
+      ignorePackages: fileConfig.ignoreUnusedPackages,
+      checkDevDeps: true
+    });
+    if (unusedDeps.totalUnused > 0) {
+      console.log(`🧹 Unused Deps:     Found ${unusedDeps.totalUnused} candidate(s)`);
+    }
+  }
+
   const integrity = await verifyLockfileIntegrity(workspaceDir, pm, yarnVariant);
   if (integrity.success) {
     console.log(`✅ Lockfile:        Integrity verified`);
@@ -206,6 +280,8 @@ export async function runCli(): Promise<void> {
   }
 
   const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
+  const diffs = await parseDependencyDiffs(workspaceDir, changedFiles);
+  const riskScore = calculateRiskScore(diffs);
 
   // Write markdown dump file
   const dumpMarkdown = generateDockerDumpMarkdown({
@@ -225,7 +301,9 @@ export async function runCli(): Promise<void> {
     integrityLog: integrity.output,
     changedFiles,
     sanitizedLockfiles,
-    checkOnly
+    checkOnly,
+    riskScore,
+    unusedDeps
   });
 
   let dumpSaved = false;
@@ -283,6 +361,7 @@ export async function runCli(): Promise<void> {
   } else {
     console.log(`✨ Successfully synchronized and updated local files:`);
     changedFiles.forEach((file) => console.log(`   - ${file}`));
+    console.log(`🛡️  Risk Level:      ${riskScore.badge}`);
     if (auditBefore && auditAfter && auditBefore.total > auditAfter.total) {
       console.log(`🛡️  Fixed ${auditBefore.total - auditAfter.total} vulnerabilities!`);
     }

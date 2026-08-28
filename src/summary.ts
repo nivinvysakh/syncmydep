@@ -3,31 +3,28 @@ import {
   CommentSummaryOptions,
   DependencyDiff,
   VulnerabilityAdvisory,
-  AuditInspectionResult
-} from './types';
+  AuditInspectionResult,
+  RiskScoreResult,
+  ChangelogSummary,
+  UnusedDependencyResult
+} from "./types";
 
-/**
- * Maps severity level to badge/icon formatted text.
- */
 function formatSeverity(sev: string): string {
   switch (sev.toLowerCase()) {
-    case 'critical':
-      return '🔴 **Critical**';
-    case 'high':
-      return '🟠 **High**';
-    case 'moderate':
-    case 'medium':
-      return '🟡 **Moderate**';
-    case 'low':
-      return '🔵 **Low**';
+    case "critical":
+      return "🔴 **Critical**";
+    case "high":
+      return "🟠 **High**";
+    case "moderate":
+    case "medium":
+      return "🟡 **Moderate**";
+    case "low":
+      return "🔵 **Low**";
     default:
-      return '⚪ **Info**';
+      return "⚪ **Info**";
   }
 }
 
-/**
- * Builds a rich Markdown description for the Pull Request and GitHub Step Summary.
- */
 export function buildMarkdownSummary({
   pm,
   yarnVariant,
@@ -44,283 +41,342 @@ export function buildMarkdownSummary({
   lockfileVerified,
   buildResult,
   prHeader,
-  prFooter
+  prFooter,
+  riskScore,
+  changelogs = [],
+  unusedDeps,
+  badgesMarkdown
 }: SummaryOptions): string {
-  const pmDisplay = pm === 'yarn' && yarnVariant === 'berry' ? 'yarn (berry)' : pm;
-  let md = '';
+  const pmDisplay = pm === "yarn" && yarnVariant === "berry" ? "yarn (berry)" : pm;
+  let md = "";
+
+  if (badgesMarkdown) {
+    md += badgesMarkdown + "\n\n";
+  }
 
   if (prHeader) {
-    md += `${prHeader.trim()}\n\n`;
+    md += prHeader.trim() + "\n\n";
   }
 
-  md += `## 🤖 SyncMyDep: Automated Dependency Synchronization\n\n`;
-  md += `SyncMyDep detected desynchronization or security vulnerabilities in your project's dependencies and generated this Pull Request.\n\n`;
+  md += "## 🤖 SyncMyDep: Automated Dependency Synchronization\n\n";
+  md += "SyncMyDep detected desynchronization or security vulnerabilities in your project's dependencies and generated this Pull Request.\n\n";
 
-  md += `### 📦 Overview\n\n`;
-  md += `- **Package Manager**: \`${pmDisplay}\`\n`;
+  md += "### 📦 Overview\n\n";
+  md += "- **Package Manager**: `" + pmDisplay + "`\n";
   if (workspaceInfo && workspaceInfo.isMonorepo) {
-    md += `- **Monorepo / Workspace**: \`${workspaceInfo.type}\` (${workspaceInfo.packages.length} workspace packages)\n`;
+    md += "- **Monorepo / Workspace**: `" + workspaceInfo.type + "` (" + workspaceInfo.packages.length + " workspace packages)\n";
   }
-  md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
-  md += `- **Security Audit Fix**: ${formatAuditStatus(fixedAudit, auditBefore, auditAfter)}\n`;
+  if (riskScore) {
+    md += "- **Breaking Change Risk**: " + riskScore.badge + "\n";
+  }
+  md += "- **Lockfile Synchronization**: " + (syncedLockfile ? "✅ Applied" : "⏭️ Skipped") + "\n";
+  md += "- **Security Audit Fix**: " + formatAuditStatus(fixedAudit, auditBefore, auditAfter) + "\n";
   if (dedupeRun !== undefined) {
-    md += `- **Lockfile Deduplication**: ${dedupeSuccess ? '✅ Applied (sub-dependency trees optimized)' : '⚠️ Skipped / Failed'}\n`;
+    md += "- **Lockfile Deduplication**: " + (dedupeSuccess ? "✅ Applied (sub-dependency trees optimized)" : "⚠️ Skipped / Failed") + "\n";
   }
   if (lockfileVerified !== undefined) {
-    md += `- **Lockfile Integrity Verification**: ${lockfileVerified ? '✅ Passed (dry-run installation verified)' : '⚠️ Warning (dry-run inspection failed)'}\n`;
+    md += "- **Lockfile Integrity Verification**: " + (lockfileVerified ? "✅ Passed (dry-run installation verified)" : "⚠️ Warning (dry-run inspection failed)") + "\n";
   }
   if (buildResult) {
-    md += `- **Build Smoke Test**: ${buildResult.success ? `✅ Passed (\`${buildResult.command}\`)` : `⚠️ Failed (\`${buildResult.command}\`)`}\n`;
+    md += "- **Build Smoke Test**: " + (buildResult.success ? "✅ Passed (`" + buildResult.command + "`)" : "⚠️ Failed (`" + buildResult.command + "`)") + "\n";
   }
-  md += `- **Modified Files**: ${changedFiles.length} file(s)\n\n`;
+  md += "- **Modified Files**: " + changedFiles.length + " file(s)\n\n";
+
+  if (riskScore && riskScore.factors.length > 0) {
+    md += buildRiskAssessmentSection(riskScore);
+  }
 
   if (dependencyDiffs && dependencyDiffs.length > 0) {
     md += buildDependencyDiffTable(dependencyDiffs);
   }
 
+  if (changelogs && changelogs.length > 0) {
+    md += buildChangelogSection(changelogs);
+  }
+
+  if (unusedDeps && unusedDeps.totalUnused > 0) {
+    md += buildUnusedDepsSection(unusedDeps);
+  }
+
   if (auditBefore && auditBefore.advisories && auditBefore.advisories.length > 0) {
     md += buildAdvisoryTable(auditBefore.advisories, fixedAudit);
   } else if (auditBefore && auditBefore.total > 0) {
-    md += `### 🛡️ Vulnerability Audit\n\n`;
-    md += `- **Initial Vulnerabilities Detected**: ${auditBefore.total}\n`;
+    md += "### 🛡️ Vulnerability Audit\n\n";
+    md += "- **Initial Vulnerabilities Detected**: " + auditBefore.total + "\n";
     if (auditAfter) {
-      md += `- **Remaining Vulnerabilities After Fix**: ${auditAfter.total}\n`;
+      md += "- **Remaining Vulnerabilities After Fix**: " + auditAfter.total + "\n";
     }
     if (auditBefore.summary) {
-      md += `\n<details>\n<summary>View vulnerability breakdown</summary>\n\n`;
-      md += `\`\`\`json\n${JSON.stringify(auditBefore.summary, null, 2)}\n\`\`\`\n`;
-      md += `</details>\n\n`;
+      md += "\n<details>\n<summary>View vulnerability breakdown</summary>\n\n";
+      md += "```json\n" + JSON.stringify(auditBefore.summary, null, 2) + "\n```\n";
+      md += "</details>\n\n";
     }
   }
 
   if (buildResult && !buildResult.success && buildResult.output) {
-    md += `### ⚠️ Build Smoke Test Logs\n\n`;
-    md += `<details>\n<summary>Click to view build error logs</summary>\n\n`;
-    md += `\`\`\`text\n${buildResult.output.slice(0, 3000)}\n\`\`\`\n`;
-    md += `</details>\n\n`;
+    md += "### ⚠️ Build Smoke Test Logs\n\n";
+    md += "<details>\n<summary>Click to view build error logs</summary>\n\n";
+    md += "```text\n" + buildResult.output.slice(0, 3000) + "\n```\n";
+    md += "</details>\n\n";
   }
 
-  md += `### 📁 Modified Dependency Files\n\n`;
-  md += `| File | Status |\n`;
-  md += `| :--- | :--- |\n`;
+  md += "### 📁 Modified Dependency Files\n\n";
+  md += "| File | Status |\n";
+  md += "| :--- | :--- |\n";
   for (const file of changedFiles) {
-    md += `| \`${file}\` | 🔄 Updated |\n`;
+    md += "| `" + file + "` | 🔄 Updated |\n";
   }
-  md += `\n`;
+  md += "\n";
 
   if (diffStat) {
-    md += `### 📊 Diff Summary\n\n`;
-    md += `\`\`\`text\n${diffStat}\n\`\`\`\n\n`;
+    md += "### 📊 Diff Summary\n\n";
+    md += "```text\n" + diffStat + "\n```\n\n";
   }
 
-  md += `### 🔍 Maintainer Checklist\n\n`;
-  md += `- [ ] Verify automated CI test results pass.\n`;
-  md += `- [ ] Review package version changes in \`package.json\` / lockfiles.\n`;
-  md += `- [ ] Merge this PR to keep repository dependencies synchronized and secure.\n\n`;
+  md += "### 🔍 Maintainer Checklist\n\n";
+  md += "- [ ] Verify automated CI test results pass.\n";
+  md += "- [ ] Review package version changes in `package.json` / lockfiles.\n";
+  if (riskScore && !riskScore.safeToAutoMerge) {
+    md += "- [ ] ⚠️ Check breaking changes & release notes for major version updates.\n";
+  }
+  md += "- [ ] Merge this PR to keep repository dependencies synchronized and secure.\n\n";
 
   if (prFooter) {
-    md += `\n${prFooter.trim()}\n\n`;
+    md += "\n" + prFooter.trim() + "\n\n";
   }
 
-  md += `---\n*Generated automatically by [SyncMyDep GitHub Action](https://github.com/nivinvysakh/syncmydep).*`;
+  md += "---\n*Generated automatically by [SyncMyDep GitHub Action](https://github.com/nivinvysakh/syncmydep).*";
 
   return md;
 }
 
-/**
- * Builds a clean, focused Markdown comment when SyncMyDep updates an existing PR via comment trigger.
- */
 export function buildCommentSummary({
   pm,
   yarnVariant,
-  workspaceInfo,
   changedFiles,
   diffStat,
-  dependencyDiffs = [],
   syncedLockfile,
   fixedAudit,
   dedupeRun,
   dedupeSuccess,
   auditBefore,
   auditAfter,
+  branch,
+  commenter,
   lockfileVerified,
   buildResult,
   prHeader,
-  prFooter,
-  branch,
-  commenter
+  prFooter
 }: CommentSummaryOptions): string {
-  const pmDisplay = pm === 'yarn' && yarnVariant === 'berry' ? 'yarn (berry)' : pm;
-  let md = '';
+  const pmDisplay = pm === "yarn" && yarnVariant === "berry" ? "yarn (berry)" : pm;
+  let md = "";
 
   if (prHeader) {
-    md += `${prHeader.trim()}\n\n`;
+    md += prHeader.trim() + "\n\n";
   }
 
-  md += `### 🚀 SyncMyDep: Dependencies Synchronized on \`${branch}\`\n\n`;
+  md += "### 🤖 SyncMyDep Dependency Fix Applied\n\n";
+
   if (commenter) {
-    md += `Triggered by @${commenter}'s \`syncdep\` command.\n\n`;
+    md += "Triggered by **@" + commenter + "** on branch `" + branch + "`.\n\n";
+  } else {
+    md += "Triggered automatically on pull request branch `" + branch + "`.\n\n";
   }
 
-  md += `#### 📦 Summary\n`;
-  md += `- **Package Manager**: \`${pmDisplay}\`\n`;
-  if (workspaceInfo && workspaceInfo.isMonorepo) {
-    md += `- **Monorepo / Workspace**: \`${workspaceInfo.type}\` (${workspaceInfo.packages.length} packages)\n`;
-  }
-  md += `- **Lockfile Synchronization**: ${syncedLockfile ? '✅ Applied' : '⏭️ Skipped'}\n`;
-  md += `- **Security Audit Fix**: ${formatAuditStatus(fixedAudit, auditBefore, auditAfter)}\n`;
+  md += "#### 📦 Execution Summary\n";
+  md += "- **Package Manager**: `" + pmDisplay + "`\n";
+  md += "- **Lockfile Synchronization**: " + (syncedLockfile ? "✅ Applied" : "⏭️ Skipped") + "\n";
+  md += "- **Security Audit Fix**: " + formatAuditStatus(fixedAudit, auditBefore, auditAfter) + "\n";
   if (dedupeRun !== undefined) {
-    md += `- **Lockfile Deduplication**: ${dedupeSuccess ? '✅ Applied' : '⚠️ Skipped'}\n`;
+    md += "- **Lockfile Deduplication**: " + (dedupeSuccess ? "✅ Applied" : "⚠️ Skipped") + "\n";
   }
   if (lockfileVerified !== undefined) {
-    md += `- **Lockfile Integrity**: ${lockfileVerified ? '✅ Passed' : '⚠️ Warning'}\n`;
+    md += "- **Lockfile Integrity Verification**: " + (lockfileVerified ? "✅ Verified" : "⚠️ Warning") + "\n";
   }
   if (buildResult) {
-    md += `- **Build Smoke Test**: ${buildResult.success ? `✅ Passed` : `⚠️ Failed`}\n`;
+    md += "- **Build Smoke Test**: " + (buildResult.success ? "✅ Passed (`" + buildResult.command + "`)" : "⚠️ Failed (`" + buildResult.command + "`)") + "\n";
   }
-  md += `- **Files Updated**: ${changedFiles.length} file(s)\n\n`;
+  md += "- **Modified Files**: " + changedFiles.length + " file(s)\n\n";
 
-  if (dependencyDiffs && dependencyDiffs.length > 0) {
-    md += buildDependencyDiffTable(dependencyDiffs);
-  }
-
-  if (auditBefore && auditBefore.advisories && auditBefore.advisories.length > 0) {
-    md += buildAdvisoryTable(auditBefore.advisories, fixedAudit);
-  } else if (auditBefore && auditBefore.total > 0) {
-    md += `#### 🛡️ Vulnerability Audit\n`;
-    md += `- **Initial Vulnerabilities**: ${auditBefore.total}\n`;
-    if (auditAfter) {
-      md += `- **Remaining Vulnerabilities**: ${auditAfter.total}\n`;
-    }
-  }
-
-  md += `#### 📁 Modified Dependency Files\n`;
-  md += `| File | Status |\n`;
-  md += `| :--- | :--- |\n`;
+  md += "#### 📁 Updated Files\n";
+  md += "| File | Status |\n";
+  md += "| :--- | :--- |\n";
   for (const file of changedFiles) {
-    md += `| \`${file}\` | 🔄 Synchronized & Pushed |\n`;
+    md += "| `" + file + "` | 🔄 Synchronized & Pushed |\n";
   }
-  md += `\n`;
+  md += "\n";
 
   if (diffStat) {
-    md += `#### 📊 Diff Summary\n`;
-    md += `\`\`\`text\n${diffStat}\n\`\`\`\n\n`;
+    md += "#### 📊 Diff Summary\n";
+    md += "```text\n" + diffStat + "\n```\n\n";
   }
 
   if (prFooter) {
-    md += `\n${prFooter.trim()}\n\n`;
+    md += "\n" + prFooter.trim() + "\n\n";
   }
 
-  md += `---\n*Pushed directly to \`${branch}\` by [SyncMyDep](https://github.com/nivinvysakh/syncmydep).*`;
+  md += "---\n*Pushed directly to `" + branch + "` by [SyncMyDep](https://github.com/nivinvysakh/syncmydep).*";
 
   return md;
 }
 
-/**
- * Formats a descriptive and informative security audit status string.
- */
 function formatAuditStatus(
   fixedAudit: boolean,
   auditBefore: AuditInspectionResult | null,
   auditAfter: AuditInspectionResult | null
 ): string {
   if (auditBefore === null) {
-    return fixedAudit ? '✅ Applied' : '⏭️ Skipped';
+    return fixedAudit ? "✅ Applied" : "⏭️ Skipped";
   }
 
   if (auditBefore.total === 0) {
-    return '✅ Clean (0 vulnerabilities detected)';
+    return "✅ Clean (0 vulnerabilities detected)";
   }
 
   if (auditAfter) {
     if (auditAfter.total === 0) {
-      return `✅ Applied (All ${auditBefore.total} vulnerabilities patched)`;
+      return "✅ Applied (All " + auditBefore.total + " vulnerabilities patched)";
     }
     if (auditAfter.total < auditBefore.total) {
       const fixedCount = auditBefore.total - auditAfter.total;
-      return `🔄 Partially Applied (${fixedCount} patched, ${auditAfter.total} require breaking changes)`;
+      return "🔄 Partially Applied (" + fixedCount + " patched, " + auditAfter.total + " require breaking changes)";
     }
     if (auditAfter.total >= auditBefore.total) {
-      return `⚠️ Attempted (${auditBefore.total} require breaking major version upgrade / manual review)`;
+      return "⚠️ Attempted (" + auditBefore.total + " require breaking major version upgrade / manual review)";
     }
   }
 
-  return fixedAudit ? '✅ Applied' : '⏭️ Skipped';
+  return fixedAudit ? "✅ Applied" : "⏭️ Skipped";
 }
 
-/**
- * Generates a markdown diff table for changed package versions.
- */
-function buildDependencyDiffTable(diffs: DependencyDiff[]): string {
-  const directDiffs = diffs.filter((d) => d.type === 'prod' || d.type === 'dev');
-  const transitiveDiffs = diffs.filter((d) => d.type === 'transitive');
+function buildRiskAssessmentSection(risk: RiskScoreResult): string {
+  let md = "### 🛡️ Breaking Change Risk & Compatibility Analysis\n\n";
+  md += "**Overall Risk Level**: " + risk.badge + "\n";
+  md += "> " + risk.summary + "\n\n";
 
-  let md = `### 🔄 Package Version Changes\n\n`;
+  if (risk.factors.length > 0) {
+    md += "| Package | Risk Level | Version Change | Reason |\n";
+    md += "| :--- | :--- | :--- | :--- |\n";
+    for (const factor of risk.factors) {
+      const levelBadge =
+        factor.level === "high"
+          ? "🔴 **High**"
+          : factor.level === "moderate"
+          ? "🟡 **Moderate**"
+          : "🟢 **Low**";
+      const changeStr =
+        factor.fromVersion && factor.toVersion
+          ? "`" + factor.fromVersion + "` ➔ `" + factor.toVersion + "`"
+          : "—";
+      md += "| `" + factor.package + "` | " + levelBadge + " | " + changeStr + " | " + factor.reason + " |\n";
+    }
+    md += "\n";
+  }
+
+  return md;
+}
+
+function buildChangelogSection(changelogs: ChangelogSummary[]): string {
+  let md = "### 📖 Dependency Changelogs & Release Notes\n\n";
+  md += "| Package | Version Transition | Release Notes / Compare Diff |\n";
+  md += "| :--- | :--- | :--- |\n";
+
+  for (const item of changelogs) {
+    const vStr =
+      item.fromVersion && item.toVersion
+        ? "`" + item.fromVersion + "` ➔ `" + item.toVersion + "`"
+        : item.toVersion
+        ? "`v" + item.toVersion + "`"
+        : "—";
+    md += "| `" + item.package + "` | " + vStr + " | " + (item.notesSummary || "—") + " |\n";
+  }
+  md += "\n";
+
+  return md;
+}
+
+function buildUnusedDepsSection(unused: UnusedDependencyResult): string {
+  let md = "### 🧹 Unused Dependencies Detected\n\n";
+  md += "SyncMyDep scanned **" + unused.scannedFilesCount + "** source files and identified **" + unused.totalUnused + "** potentially unused package(s):\n\n";
+
+  if (unused.unusedProd.length > 0) {
+    md += "- **Production Dependencies**: " + unused.unusedProd.map((p) => "`" + p + "`").join(", ") + "\n";
+  }
+  if (unused.unusedDev.length > 0) {
+    md += "- **Dev Dependencies**: " + unused.unusedDev.map((p) => "`" + p + "`").join(", ") + "\n";
+  }
+  md += "\n*To prune these dependencies automatically, run `npx syncmydep prune` or enable `prune-unused-deps: true`.*\n\n";
+
+  return md;
+}
+
+function buildDependencyDiffTable(diffs: DependencyDiff[]): string {
+  const directDiffs = diffs.filter((d) => d.type === "prod" || d.type === "dev");
+  const transitiveDiffs = diffs.filter((d) => d.type === "transitive");
+
+  let md = "### 🔄 Package Version Changes\n\n";
 
   const renderRow = (diff: DependencyDiff) => {
-    const oldV = diff.oldVersion ? `\`${diff.oldVersion}\`` : '—';
-    const newV = diff.newVersion ? `\`${diff.newVersion}\`` : '—';
-    let statusText: string = diff.reason || 'Direct Update';
-    if (diff.changeType === 'added') statusText = '✨ Added';
-    if (diff.changeType === 'removed') statusText = '🗑️ Removed';
-    if (diff.reason === 'Lockfile Drift') statusText = '🔒 Lockfile Drift';
-    if (diff.reason === 'Direct Update' && diff.changeType === 'upgraded') statusText = '🔄 Direct Update';
-    return `| \`${diff.name}\` | ${oldV} | ${newV} | ${statusText} |\n`;
+    const oldV = diff.oldVersion ? "`" + diff.oldVersion + "`" : "—";
+    const newV = diff.newVersion ? "`" + diff.newVersion + "`" : "—";
+    let statusText: string = diff.reason || "Direct Update";
+    if (diff.changeType === "added") statusText = "✨ Added";
+    if (diff.changeType === "removed") statusText = "🗑️ Removed";
+    if (diff.reason === "Lockfile Drift") statusText = "🔒 Lockfile Drift";
+    if (diff.reason === "Direct Update" && diff.changeType === "upgraded") statusText = "🔄 Direct Update";
+    return "| `" + diff.name + "` | " + oldV + " | " + newV + " | " + statusText + " |\n";
   };
 
   if (directDiffs.length > 0) {
-    md += `| Package | Old Version | New Version | Reason / Type |\n`;
-    md += `| :--- | :--- | :--- | :--- |\n`;
+    md += "| Package | Old Version | New Version | Reason / Type |\n";
+    md += "| :--- | :--- | :--- | :--- |\n";
     for (const diff of directDiffs) {
       md += renderRow(diff);
     }
-    md += `\n`;
+    md += "\n";
   }
 
   if (transitiveDiffs.length > 0) {
     if (directDiffs.length === 0 && transitiveDiffs.length <= 5) {
-      md += `| Package | Old Version | New Version | Reason / Type |\n`;
-      md += `| :--- | :--- | :--- | :--- |\n`;
+      md += "| Package | Old Version | New Version | Reason / Type |\n";
+      md += "| :--- | :--- | :--- | :--- |\n";
       for (const diff of transitiveDiffs) {
         md += renderRow(diff);
       }
-      md += `\n`;
+      md += "\n";
     } else {
-      md += `<details>\n<summary>🔒 <b>${transitiveDiffs.length} Sub-dependency Updates (Lockfile Drift)</b> (Click to expand)</summary>\n\n`;
-      md += `| Package | Old Version | New Version | Reason / Type |\n`;
-      md += `| :--- | :--- | :--- | :--- |\n`;
+      md += "<details>\n<summary>🔒 <b>" + transitiveDiffs.length + " Sub-dependency Updates (Lockfile Drift)</b> (Click to expand)</summary>\n\n";
+      md += "| Package | Old Version | New Version | Reason / Type |\n";
+      md += "| :--- | :--- | :--- | :--- |\n";
       for (const diff of transitiveDiffs) {
         md += renderRow(diff);
       }
-      md += `\n</details>\n\n`;
+      md += "\n</details>\n\n";
     }
   }
 
   return md;
 }
 
-/**
- * Generates a markdown disclosure table for detected security advisories.
- */
 function buildAdvisoryTable(advisories: VulnerabilityAdvisory[], fixed: boolean): string {
-  let md = `### 🛡️ Vulnerability & Security Advisory Disclosure\n\n`;
-  md += `The following security advisories were identified${fixed ? ' and patched' : ''} (Total: **${advisories.length}**):\n\n`;
+  let md = "### 🛡️ Vulnerability & Security Advisory Disclosure\n\n";
+  md += "The following security advisories were identified" + (fixed ? " and patched" : "") + " (Total: **" + advisories.length + "**):\n\n";
 
-  let table = `| Severity | Advisory / CVE | Package | Patched In | Title |\n`;
-  table += `| :--- | :--- | :--- | :--- | :--- |\n`;
+  let table = "| Severity | Advisory / CVE | Package | Patched In | Title |\n";
+  table += "| :--- | :--- | :--- | :--- | :--- |\n";
 
   for (const adv of advisories) {
-    const idLink = adv.url ? `[${adv.id}](${adv.url})` : adv.id;
-    const patched = adv.patchedVersions ? `\`${adv.patchedVersions}\`` : '—';
-    table += `| ${formatSeverity(adv.severity)} | ${idLink} | \`${adv.package}\` | ${patched} | ${adv.title} |\n`;
+    const idLink = adv.url ? "[" + adv.id + "](" + adv.url + ")" : adv.id;
+    const patched = adv.patchedVersions ? "`" + adv.patchedVersions + "`" : "—";
+    table += "| " + formatSeverity(adv.severity) + " | " + idLink + " | `" + adv.package + "` | " + patched + " | " + adv.title + " |\n";
   }
 
   if (advisories.length <= 5) {
-    md += `${table}\n`;
+    md += table + "\n";
   } else {
-    md += `<details>\n<summary>🛡️ <b>View all ${advisories.length} Security Advisories</b> (Click to expand)</summary>\n\n`;
-    md += `${table}\n`;
-    md += `</details>\n\n`;
+    md += "<details>\n<summary>🛡️ <b>View all " + advisories.length + " Security Advisories</b> (Click to expand)</summary>\n\n";
+    md += table + "\n";
+    md += "</details>\n\n";
   }
 
   return md;

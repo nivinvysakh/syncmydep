@@ -49,7 +49,14 @@ describe('config loader', () => {
       'monorepo:',
       '  root-only: false',
       '  ignore:',
-      '    - packages/legacy'
+      '    - packages/legacy',
+      'detect-unused-deps: true',
+      'prune-unused-deps: false',
+      'ignore-unused-packages:',
+      '  - my-cli-tool',
+      'show-changelogs: true',
+      'risk-scoring: true',
+      'update-readme-badge: true'
     ].join('\n');
 
     fs.writeFileSync(path.join(tmpDir, '.syncmydep.yml'), yamlContent);
@@ -78,6 +85,12 @@ describe('config loader', () => {
     expect(config.ignorePackages).toEqual(['lodash', 'axios']);
     expect(config.monorepo?.rootOnly).toBe(false);
     expect(config.monorepo?.ignore).toEqual(['packages/legacy']);
+    expect(config.detectUnusedDeps).toBe(true);
+    expect(config.pruneUnusedDeps).toBe(false);
+    expect(config.ignoreUnusedPackages).toEqual(['my-cli-tool']);
+    expect(config.showChangelogs).toBe(true);
+    expect(config.riskScoring).toBe(true);
+    expect(config.updateReadmeBadge).toBe(true);
   });
 
   test('loads and parses .syncmydeprc.json properly', () => {

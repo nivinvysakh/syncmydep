@@ -79,6 +79,73 @@ export interface SyncMyDepConfig {
   autoMerge?: boolean;
   autoMergeMethod?: 'squash' | 'merge' | 'rebase';
   cache?: boolean;
+  detectUnusedDeps?: boolean;
+  pruneUnusedDeps?: boolean;
+  ignoreUnusedPackages?: string[];
+  showChangelogs?: boolean;
+  riskScoring?: boolean;
+  updateReadmeBadge?: boolean;
+}
+
+export type RiskLevel = 'low' | 'moderate' | 'high';
+
+export interface RiskFactor {
+  package: string;
+  level: RiskLevel;
+  reason: string;
+  fromVersion?: string;
+  toVersion?: string;
+}
+
+export interface RiskScoreResult {
+  overallLevel: RiskLevel;
+  score: number; // 1 to 10 scale
+  badge: string;
+  summary: string;
+  factors: RiskFactor[];
+  safeToAutoMerge: boolean;
+}
+
+export interface PackageReleaseInfo {
+  name: string;
+  fromVersion?: string;
+  toVersion?: string;
+  repositoryUrl?: string;
+  changelogUrl?: string;
+  releaseUrl?: string;
+  diffUrl?: string;
+}
+
+export interface ChangelogSummary {
+  package: string;
+  fromVersion?: string;
+  toVersion?: string;
+  diffUrl?: string;
+  releaseUrl?: string;
+  notesSummary?: string;
+}
+
+export interface UnusedDependencyResult {
+  unusedProd: string[];
+  unusedDev: string[];
+  totalUnused: number;
+  scannedFilesCount: number;
+}
+
+export interface BadgeOptions {
+  status?: 'synced' | 'drift' | 'fixed';
+  pm?: PackageManager;
+  vulnCount?: number;
+  riskLevel?: RiskLevel;
+  repoUrl?: string;
+}
+
+export interface BadgeResult {
+  syncBadge: string;
+  vulnBadge: string;
+  pmBadge: string;
+  riskBadge: string;
+  combinedMarkdown: string;
 }
 
 export interface AuditInspectionResult {
@@ -115,6 +182,10 @@ export interface SummaryOptions {
   buildResult?: BuildVerificationResult | null;
   prHeader?: string;
   prFooter?: string;
+  riskScore?: RiskScoreResult;
+  changelogs?: ChangelogSummary[];
+  unusedDeps?: UnusedDependencyResult;
+  badgesMarkdown?: string;
 }
 
 export interface CommentSummaryOptions extends SummaryOptions {
