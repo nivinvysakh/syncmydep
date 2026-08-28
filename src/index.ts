@@ -35,12 +35,14 @@ import { loadConfigFile } from './config';
 import { detectWorkspace, sanitizeWorkspaceLockfiles } from './workspace';
 import { ensurePackageManagerInstalled } from './installer';
 import { restorePackageCache, savePackageCache } from './cache';
-import { rebaseAndRedoProcess, deleteRemoteBranch } from './rebase-pr';
+import { rebaseAndRedoProcess, deleteRemoteBranch, autoRebaseAllSyncPRs } from './rebase-pr';
 import { buildMarkdownSummary, buildCommentSummary } from './summary';
 import { calculateRiskScore } from './risk';
 import { buildChangelogSummaries } from './changelog';
 import { detectUnusedDependencies, pruneUnusedDependencies } from './unused-deps';
 import { generateBadges, updateReadmeBadges } from './badges';
+import { groupDependencyDiffs } from './grouping';
+import { generateHtmlReport } from './report';
 import { AuditInspectionResult, BuildVerificationResult, UnusedDependencyResult } from './types';
 
 async function run(): Promise<void> {
@@ -120,6 +122,14 @@ async function run(): Promise<void> {
     const updateReadmeBadgeOption = core.getInput('update-readme-badge') !== ''
       ? core.getBooleanInput('update-readme-badge')
       : fileConfig.updateReadmeBadge ?? false;
+    const autoRebaseOption = core.getInput('auto-rebase') !== ''
+      ? core.getBooleanInput('auto-rebase')
+      : fileConfig.autoRebase ?? false;
+    const generateReportOption = core.getInput('generate-report') !== ''
+      ? core.getBooleanInput('generate-report')
+      : fileConfig.generateReport ?? false;
+    const reportPathOption = core.getInput('report-path') || fileConfig.reportPath || 'syncmydep-report.html';
+    const groupRulesConfig = fileConfig.groupRules;
 
     const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : ['dependencies', 'SyncMyDep'];
     const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
@@ -557,6 +567,28 @@ async function run(): Promise<void> {
     core.setOutput('modified-files', changedFiles.join(','));
 
     const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
+    const groups = groupDependencyDiffs(dependencyDiffs, groupRulesConfig);
+
+    if (generateReportOption) {
+      const reportData = {
+        projectName: github.context.repo.repo || path.basename(workspaceDir),
+        timestamp: new Date().toUTCString(),
+        pm,
+        yarnVariant,
+        workspaceInfo,
+        diffs: dependencyDiffs,
+        groups,
+        auditBefore,
+        auditAfter,
+        riskScore,
+        unusedDeps: unusedDepsResult,
+        lockfileVerified,
+        buildResult
+      };
+      const reportOut = path.isAbsolute(reportPathOption) ? reportPathOption : path.join(workspaceDir, reportPathOption);
+      const { outputPath } = generateHtmlReport(reportData, { output: reportOut });
+      core.info(`[SyncMyDep] 📊 Generated interactive HTML dashboard report: ${outputPath}`);
+    }
 
     const prBody = buildMarkdownSummary({
       pm,
@@ -578,7 +610,8 @@ async function run(): Promise<void> {
       riskScore,
       changelogs,
       unusedDeps: unusedDepsResult,
-      badgesMarkdown: badgesResult.combinedMarkdown
+      badgesMarkdown: badgesResult.combinedMarkdown,
+      groups: groups.length > 1 ? groups : undefined
     });
 
     if (!token) {
@@ -603,6 +636,33 @@ async function run(): Promise<void> {
           baseBranch = 'main';
         }
       }
+    }
+
+    // 8.5 Automated Rebase for Stale / Conflicting SyncMyDep PRs
+    if (autoRebaseOption && !isPullRequest && !isIssueComment) {
+      await autoRebaseAllSyncPRs({
+        workspaceDir,
+        octokit,
+        owner,
+        repo,
+        baseBranch,
+        pm,
+        yarnVariant,
+        workspaceInfo,
+        syncLockfileOption,
+        fixAuditOption,
+        auditLevel,
+        commitMessage,
+        prTitle,
+        labels,
+        assignees,
+        reviewers,
+        verifyLockfile: verifyLockfileOption,
+        runBuild,
+        failOnBuildError,
+        autoMerge: autoMergeOption,
+        autoMergeMethod
+      });
     }
 
     // 9. Direct Push Mode on pull_request triggers

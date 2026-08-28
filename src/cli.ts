@@ -20,6 +20,8 @@ import { detectWorkspace, sanitizeWorkspaceLockfiles } from './workspace';
 import { calculateRiskScore } from './risk';
 import { detectUnusedDependencies, pruneUnusedDependencies } from './unused-deps';
 import { generateBadges, updateReadmeBadges } from './badges';
+import { groupDependencyDiffs } from './grouping';
+import { generateHtmlReport } from './report';
 import { AuditInspectionResult, RiskScoreResult, UnusedDependencyResult } from './types';
 
 export function parseBool(val: string | undefined, defaultVal: boolean): boolean {
@@ -175,6 +177,74 @@ export async function runCli(): Promise<void> {
     } else {
       console.log('\n💡 Tip: Run `syncmydep badge --update` to insert these badges into README.md automatically.');
     }
+    console.log('=============================================================\n');
+    return;
+  }
+
+  // Subcommand: group
+  if (command === 'group') {
+    console.log('\n=============================================================');
+    console.log('         📦 SyncMyDep: Dependency Grouping Inspector         ');
+    console.log('=============================================================');
+    console.log(`📁 Directory: ${workspaceDir}`);
+    const { changedFiles } = await getGitStatus(workspaceDir);
+    const diffs = await parseDependencyDiffs(workspaceDir, changedFiles);
+
+    const groups = groupDependencyDiffs(diffs, fileConfig.groupRules);
+    console.log(`\n📦 Categorized ${diffs.length} dependency diff(s) into ${groups.length} group(s):\n`);
+
+    for (const group of groups) {
+      console.log(`📂 [${group.name}] (${group.diffs.length} package${group.diffs.length === 1 ? '' : 's'}):`);
+      for (const d of group.diffs) {
+        console.log(`   - ${d.name} (${d.oldVersion || '—'} ➔ ${d.newVersion || '—'}) [${d.changeType}]`);
+      }
+      console.log('');
+    }
+    console.log('=============================================================\n');
+    return;
+  }
+
+  // Subcommand: report
+  if (command === 'report') {
+    console.log('\n=============================================================');
+    console.log('       📊 SyncMyDep: Interactive HTML Report Generator       ');
+    console.log('=============================================================');
+    const pm = detectPackageManager(workspaceDir, fileConfig.packageManager);
+    const yarnVariant = pm === 'yarn' ? detectYarnVariant(workspaceDir) : undefined;
+    const workspaceInfo = detectWorkspace(workspaceDir);
+
+    const { changedFiles } = await getGitStatus(workspaceDir);
+    const diffs = await parseDependencyDiffs(workspaceDir, changedFiles);
+    const riskScore = calculateRiskScore(diffs);
+    const auditBefore = await inspectAudit(workspaceDir, pm);
+    const unusedDeps = detectUnusedDependencies(workspaceDir, {
+      ignorePackages: fileConfig.ignoreUnusedPackages,
+      checkDevDeps: true
+    });
+
+    const groups = groupDependencyDiffs(diffs, fileConfig.groupRules);
+
+    const outputArg = args.find((a) => a.startsWith('--output='))?.split('=')[1] || args[args.indexOf('--output') + 1] || 'syncmydep-report.html';
+    const reportOut = path.isAbsolute(outputArg) ? outputArg : path.join(workspaceDir, outputArg);
+
+    const reportData = {
+      projectName: path.basename(workspaceDir),
+      timestamp: new Date().toUTCString(),
+      pm,
+      yarnVariant,
+      workspaceInfo,
+      diffs,
+      groups,
+      auditBefore,
+      auditAfter: null,
+      riskScore,
+      unusedDeps,
+      lockfileVerified: true
+    };
+
+    const { outputPath } = generateHtmlReport(reportData, { output: reportOut });
+    console.log(`✅ Interactive HTML dashboard report generated at:`);
+    console.log(`   📄 ${outputPath}`);
     console.log('=============================================================\n');
     return;
   }

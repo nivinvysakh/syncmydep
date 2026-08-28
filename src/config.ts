@@ -134,6 +134,10 @@ function normalizeConfig(raw: Record<string, unknown>): SyncMyDepConfig {
     ignoreUnusedPackages: normalizeList(getVal<string[] | string>('ignoreUnusedPackages', 'ignore-unused-packages', 'ignore_unused_packages')),
     showChangelogs: getVal<boolean>('showChangelogs', 'show-changelogs', 'show_changelogs', 'changelogs'),
     riskScoring: getVal<boolean>('riskScoring', 'risk-scoring', 'risk_scoring', 'risk'),
-    updateReadmeBadge: getVal<boolean>('updateReadmeBadge', 'update-readme-badge', 'update_readme_badge', 'readmeBadge', 'readme-badge')
+    updateReadmeBadge: getVal<boolean>('updateReadmeBadge', 'update-readme-badge', 'update_readme_badge', 'readmeBadge', 'readme-badge'),
+    autoRebase: getVal<boolean>('autoRebase', 'auto-rebase', 'auto_rebase'),
+    groupRules: getVal<SyncMyDepConfig['groupRules']>('groupRules', 'group-rules', 'group_rules', 'groups'),
+    generateReport: getVal<boolean>('generateReport', 'generate-report', 'generate_report', 'report'),
+    reportPath: getVal<string>('reportPath', 'report-path', 'report_path')
   };
 }

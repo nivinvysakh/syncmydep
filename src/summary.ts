@@ -2,6 +2,7 @@ import {
   SummaryOptions,
   CommentSummaryOptions,
   DependencyDiff,
+  DependencyGroup,
   VulnerabilityAdvisory,
   AuditInspectionResult,
   RiskScoreResult,
@@ -45,7 +46,8 @@ export function buildMarkdownSummary({
   riskScore,
   changelogs = [],
   unusedDeps,
-  badgesMarkdown
+  badgesMarkdown,
+  groups
 }: SummaryOptions): string {
   const pmDisplay = pm === "yarn" && yarnVariant === "berry" ? "yarn (berry)" : pm;
   let md = "";
@@ -86,7 +88,9 @@ export function buildMarkdownSummary({
     md += buildRiskAssessmentSection(riskScore);
   }
 
-  if (dependencyDiffs && dependencyDiffs.length > 0) {
+  if (groups && groups.length > 0) {
+    md += buildGroupedDependencyTable(groups);
+  } else if (dependencyDiffs && dependencyDiffs.length > 0) {
     md += buildDependencyDiffTable(dependencyDiffs);
   }
 
@@ -354,6 +358,30 @@ function buildDependencyDiffTable(diffs: DependencyDiff[]): string {
       }
       md += "\n</details>\n\n";
     }
+  }
+
+  return md;
+}
+
+function buildGroupedDependencyTable(groups: DependencyGroup[]): string {
+  let md = "### 📦 Grouped Package Updates\n\n";
+
+  for (const group of groups) {
+    md += "#### " + group.name + " (" + group.diffs.length + " package" + (group.diffs.length === 1 ? "" : "s") + ")\n\n";
+    md += "| Package | Old Version | New Version | Reason / Type |\n";
+    md += "| :--- | :--- | :--- | :--- |\n";
+    for (const diff of group.diffs) {
+      const oldV = diff.oldVersion ? "`" + diff.oldVersion + "`" : "—";
+      const newV = diff.newVersion ? "`" + diff.newVersion + "`" : "—";
+      let statusText: string = diff.reason || "Direct Update";
+      if (diff.changeType === "added") statusText = "✨ Added";
+      if (diff.changeType === "removed") statusText = "🗑️ Removed";
+      if (diff.changeType === "downgraded") statusText = "🔒 Lockfile Reconciled";
+      else if (diff.reason === "Lockfile Drift") statusText = "🔒 Lockfile Drift";
+      if (diff.reason === "Direct Update" && diff.changeType === "upgraded") statusText = "🔄 Direct Update";
+      md += "| `" + diff.name + "` | " + oldV + " | " + newV + " | " + statusText + " |\n";
+    }
+    md += "\n";
   }
 
   return md;

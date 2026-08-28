@@ -419,3 +419,118 @@ export async function rebaseAndRedoProcess(
 
   return { hasChanges: true, pushed: true, prNumber: prResult.number };
 }
+
+export interface ConflictingPRInfo {
+  number: number;
+  title: string;
+  headBranch: string;
+  baseBranch: string;
+  mergeable: boolean | null;
+  mergeableState: string;
+}
+
+/**
+ * Finds all open SyncMyDep PRs that require rebasing or have merge conflicts.
+ */
+export async function findConflictingSyncPRs(
+  octokit: OctokitClient,
+  owner: string,
+  repo: string,
+  baseBranch: string = "main",
+  branchPrefix: string = "syncmydep/"
+): Promise<ConflictingPRInfo[]> {
+  try {
+    const { data: openPRs } = await octokit.rest.pulls.list({
+      owner,
+      repo,
+      state: "open",
+      base: baseBranch,
+      per_page: 50,
+    });
+
+    const conflicting: ConflictingPRInfo[] = [];
+
+    for (const pr of openPRs) {
+      const isSyncBranch =
+        pr.head.ref.startsWith(branchPrefix) ||
+        pr.head.ref.startsWith("bot/") ||
+        pr.labels.some((l) => l.name === "SyncMyDep");
+
+      if (!isSyncBranch) continue;
+
+      // Fetch detailed PR to inspect mergeable_state
+      try {
+        const { data: prDetail } = await octokit.rest.pulls.get({
+          owner,
+          repo,
+          pull_number: pr.number,
+        });
+
+        const isDirty = prDetail.mergeable === false || prDetail.mergeable_state === "dirty";
+        const isBehind = prDetail.mergeable_state === "behind";
+
+        if (isDirty || isBehind) {
+          conflicting.push({
+            number: pr.number,
+            title: pr.title,
+            headBranch: pr.head.ref,
+            baseBranch: pr.base.ref,
+            mergeable: prDetail.mergeable,
+            mergeableState: prDetail.mergeable_state,
+          });
+        }
+      } catch (err: unknown) {
+        core.warning(`[SyncMyDep] Failed to fetch PR #${pr.number} details for rebase check: ${String(err)}`);
+      }
+    }
+
+    return conflicting;
+  } catch (err: unknown) {
+    core.warning(`[SyncMyDep] Failed to query open Pull Requests: ${String(err)}`);
+    return [];
+  }
+}
+
+/**
+ * Automatically rebases and resolves conflicts across all open conflicting SyncMyDep PRs.
+ */
+export async function autoRebaseAllSyncPRs(
+  options: Omit<RebaseAndRedoOptions, "targetBranch" | "prNumber">
+): Promise<number> {
+  const { octokit, owner, repo, baseBranch } = options;
+
+  core.info(`[SyncMyDep] 🔄 Scanning for stale or conflicting SyncMyDep PRs against '${baseBranch}'...`);
+  const conflictingPRs = await findConflictingSyncPRs(octokit, owner, repo, baseBranch);
+
+  if (conflictingPRs.length === 0) {
+    core.info(`[SyncMyDep] ✅ No conflicting or stale SyncMyDep PRs found.`);
+    return 0;
+  }
+
+  core.info(`[SyncMyDep] Found ${conflictingPRs.length} PR(s) requiring automated rebase:`);
+  for (const pr of conflictingPRs) {
+    core.info(`  - PR #${pr.number} (${pr.headBranch}) [state: ${pr.mergeableState}]`);
+  }
+
+  let rebasedCount = 0;
+  for (const pr of conflictingPRs) {
+    try {
+      core.info(`[SyncMyDep] 🔄 Auto-rebasing PR #${pr.number} (${pr.headBranch})...`);
+      const result = await rebaseAndRedoProcess({
+        ...options,
+        targetBranch: pr.headBranch,
+        prNumber: pr.number,
+      });
+
+      if (result.pushed) {
+        rebasedCount++;
+        core.info(`[SyncMyDep] ✅ Successfully auto-rebased PR #${pr.number}.`);
+      }
+    } catch (err: unknown) {
+      core.error(`[SyncMyDep] Failed to auto-rebase PR #${pr.number}: ${String(err)}`);
+    }
+  }
+
+  return rebasedCount;
+}
+

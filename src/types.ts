@@ -85,6 +85,47 @@ export interface SyncMyDepConfig {
   showChangelogs?: boolean;
   riskScoring?: boolean;
   updateReadmeBadge?: boolean;
+  autoRebase?: boolean;
+  groupRules?: GroupRule[];
+  generateReport?: boolean;
+  reportPath?: string;
+}
+
+export interface GroupRule {
+  name: string;
+  patterns?: string[];
+  types?: ('prod' | 'dev' | 'peer' | 'optional' | 'transitive')[];
+  changeTypes?: ('added' | 'upgraded' | 'downgraded' | 'removed')[];
+  branchSuffix?: string;
+  titlePrefix?: string;
+}
+
+export interface DependencyGroup {
+  name: string;
+  diffs: DependencyDiff[];
+  branchSuffix?: string;
+  titlePrefix?: string;
+}
+
+export interface ReportData {
+  projectName: string;
+  timestamp: string;
+  pm: PackageManager;
+  yarnVariant?: YarnVariant;
+  workspaceInfo?: WorkspaceInfo;
+  diffs: DependencyDiff[];
+  groups?: DependencyGroup[];
+  auditBefore: AuditInspectionResult | null;
+  auditAfter: AuditInspectionResult | null;
+  riskScore?: RiskScoreResult;
+  unusedDeps?: UnusedDependencyResult;
+  lockfileVerified?: boolean;
+  buildResult?: BuildVerificationResult | null;
+}
+
+export interface ReportOptions {
+  output?: string;
+  title?: string;
 }
 
 export type RiskLevel = 'low' | 'moderate' | 'high';
@@ -186,6 +227,7 @@ export interface SummaryOptions {
   changelogs?: ChangelogSummary[];
   unusedDeps?: UnusedDependencyResult;
   badgesMarkdown?: string;
+  groups?: DependencyGroup[];
 }
 
 export interface CommentSummaryOptions extends SummaryOptions {

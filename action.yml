@@ -115,6 +115,15 @@ inputs:
   update-readme-badge:
     description: 'Whether to automatically insert or update SyncMyDep status badges in README.md ("true" or "false").'
     required: false
+  auto-rebase:
+    description: 'Automatically detect and rebase stale or conflicting open SyncMyDep PRs ("true" or "false").'
+    required: false
+  generate-report:
+    description: 'Generate an interactive static HTML dashboard report ("true" or "false").'
+    required: false
+  report-path:
+    description: 'Path where the interactive HTML dashboard report should be saved (default: syncmydep-report.html).'
+    required: false
 
 outputs:
   changes-detected:
