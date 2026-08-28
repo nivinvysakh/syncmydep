@@ -63,6 +63,34 @@ Some project description.
     expect(updatedContent).toContain('## Description');
   });
 
+  test('updateReadmeBadges preserves external badges outside markers', () => {
+    const initialReadme = `
+# My Awesome Project
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://example.com)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://example.com)
+
+<!-- syncmydep:start -->
+OLD_SYNC_BADGE
+<!-- syncmydep:end -->
+
+## Description
+Some project description.
+`;
+    fs.writeFileSync(path.join(tmpDir, 'README.md'), initialReadme.trim());
+
+    const result = updateReadmeBadges(tmpDir, 'NEW_SYNC_BADGE');
+    expect(result.updated).toBe(true);
+
+    const updatedContent = fs.readFileSync(path.join(tmpDir, 'README.md'), 'utf8');
+    // External badges outside the comment block must remain intact
+    expect(updatedContent).toContain('License: MIT');
+    expect(updatedContent).toContain('build-passing');
+    // Sync badge updated
+    expect(updatedContent).toContain('NEW_SYNC_BADGE');
+    expect(updatedContent).not.toContain('OLD_SYNC_BADGE');
+  });
+
   test('updateReadmeBadges creates README.md if none exists', () => {
     const result = updateReadmeBadges(tmpDir, 'NEW_SYNC_BADGES');
     expect(result.updated).toBe(true);
