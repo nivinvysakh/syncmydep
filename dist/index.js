@@ -100561,6 +100561,21 @@ async function run() {
         const octokit = github.getOctokit(token);
         const { owner, repo } = github.context.repo;
         await configureGitUser(workspaceDir, octokit);
+        let baseBranch = baseBranchInput || 'main';
+        if (!baseBranchInput) {
+            if (github.context.ref && github.context.ref.startsWith('refs/heads/')) {
+                baseBranch = github.context.ref.replace('refs/heads/', '');
+            }
+            else {
+                try {
+                    const repoInfo = await octokit.rest.repos.get({ owner, repo });
+                    baseBranch = repoInfo.data.default_branch || 'main';
+                }
+                catch {
+                    baseBranch = 'main';
+                }
+            }
+        }
         // 9. Direct Push Mode on pull_request triggers
         if ((isPullRequest || directPush) && github.context.payload.pull_request) {
             const pr = github.context.payload.pull_request;
@@ -100583,7 +100598,28 @@ async function run() {
                 }
             }
         }
-        // 10. Create or Update Pull Request
+        // 10. Direct Push for README-only badge updates (when dependencies are in sync)
+        const onlyReadmeModified = changedFiles.length > 0 && changedFiles.every((f) => f.toLowerCase().endsWith('readme.md'));
+        if (onlyReadmeModified && !isPullRequest) {
+            lib_core.info(`[SyncMyDep] 📊 All dependencies are in sync. Pushing updated README status badges directly to '${baseBranch}' without opening a PR...`);
+            const committed = await commitAndPushChanges({
+                workspaceDir,
+                branch: baseBranch,
+                commitMessage: 'docs: update SyncMyDep status badges in README',
+                files: changedFiles
+            });
+            if (committed) {
+                lib_core.info(`[SyncMyDep] ✅ Successfully pushed README badges to '${baseBranch}' directly.`);
+                if (stepSummary) {
+                    await lib_core.summary
+                        .addHeading('SyncMyDep: README Status Badges Updated')
+                        .addRaw(`✅ **All dependencies and lockfiles are in sync.** Updated status badges were pushed directly to \`${baseBranch}\`.`)
+                        .write();
+                }
+                return;
+            }
+        }
+        // 11. Create or Update Pull Request
         const committed = await commitAndPushChanges({
             workspaceDir,
             branch: branchName,
@@ -100593,21 +100629,6 @@ async function run() {
         if (!committed) {
             lib_core.info('[SyncMyDep] No changes committed.');
             return;
-        }
-        let baseBranch = baseBranchInput || 'main';
-        if (!baseBranchInput) {
-            if (github.context.ref && github.context.ref.startsWith('refs/heads/')) {
-                baseBranch = github.context.ref.replace('refs/heads/', '');
-            }
-            else {
-                try {
-                    const repoInfo = await octokit.rest.repos.get({ owner, repo });
-                    baseBranch = repoInfo.data.default_branch || 'main';
-                }
-                catch {
-                    baseBranch = 'main';
-                }
-            }
         }
         const prResult = await createOrUpdatePullRequest({
             octokit,
