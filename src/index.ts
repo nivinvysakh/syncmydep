@@ -498,7 +498,8 @@ async function run(): Promise<void> {
 
     // 6. Check-Only / CI Gating Mode
     if (checkOnly) {
-      if (!hasChanges && (!auditBefore || auditBefore.total === 0)) {
+      const lockfileOrManifestChanges = changedFiles.filter((f) => !f.toLowerCase().endsWith('readme.md'));
+      if (lockfileOrManifestChanges.length === 0 && (!auditBefore || auditBefore.total === 0)) {
         core.info('✅ [SyncMyDep] Check-Only passed: all dependencies and lockfiles are synchronized and healthy.');
         core.setOutput('changes-detected', 'false');
         core.setOutput('modified-files', '');
@@ -513,9 +514,9 @@ async function run(): Promise<void> {
       }
 
       core.setOutput('changes-detected', 'true');
-      core.setOutput('modified-files', changedFiles.join(','));
+      core.setOutput('modified-files', lockfileOrManifestChanges.join(','));
 
-      for (const file of changedFiles) {
+      for (const file of lockfileOrManifestChanges) {
         core.error(`[SyncMyDep] Lockfile desynchronization detected in: ${file}`, { file });
       }
 
@@ -526,7 +527,7 @@ async function run(): Promise<void> {
       if (stepSummary) {
         await core.summary
           .addHeading('SyncMyDep: CI Check Failed')
-          .addRaw(`❌ **Desynchronization or security vulnerabilities detected in:** \`${changedFiles.join(', ')}\`\n\nRun SyncMyDep to automatically fix and sync your lockfiles.`)
+          .addRaw(`❌ **Desynchronization or security vulnerabilities detected in:** \`${lockfileOrManifestChanges.join(', ')}\`\n\nRun SyncMyDep to automatically fix and sync your lockfiles.`)
           .write();
       }
 

@@ -94730,7 +94730,8 @@ async function getGitStatus(workspaceDir) {
         if (!match)
             continue;
         const filePath = match[1].trim().replace(/^"|"$/g, '');
-        // Check relevant manifest & lockfiles
+        // Check relevant manifest, lockfiles, and README
+        const lower = filePath.toLowerCase();
         if (filePath.endsWith('package.json') ||
             filePath.endsWith('package-lock.json') ||
             filePath.endsWith('yarn.lock') ||
@@ -94741,7 +94742,8 @@ async function getGitStatus(workspaceDir) {
             filePath.endsWith('bun.lockb') ||
             filePath.endsWith('deno.lock') ||
             filePath.endsWith('deno.json') ||
-            filePath.endsWith('deno.jsonc')) {
+            filePath.endsWith('deno.jsonc') ||
+            lower.endsWith('readme.md')) {
             changedFiles.push(filePath);
         }
     }
@@ -100482,7 +100484,8 @@ async function run() {
         const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
         // 6. Check-Only / CI Gating Mode
         if (checkOnly) {
-            if (!hasChanges && (!auditBefore || auditBefore.total === 0)) {
+            const lockfileOrManifestChanges = changedFiles.filter((f) => !f.toLowerCase().endsWith('readme.md'));
+            if (lockfileOrManifestChanges.length === 0 && (!auditBefore || auditBefore.total === 0)) {
                 lib_core.info('✅ [SyncMyDep] Check-Only passed: all dependencies and lockfiles are synchronized and healthy.');
                 lib_core.setOutput('changes-detected', 'false');
                 lib_core.setOutput('modified-files', '');
@@ -100495,8 +100498,8 @@ async function run() {
                 return;
             }
             lib_core.setOutput('changes-detected', 'true');
-            lib_core.setOutput('modified-files', changedFiles.join(','));
-            for (const file of changedFiles) {
+            lib_core.setOutput('modified-files', lockfileOrManifestChanges.join(','));
+            for (const file of lockfileOrManifestChanges) {
                 lib_core.error(`[SyncMyDep] Lockfile desynchronization detected in: ${file}`, { file });
             }
             if (auditBefore && auditBefore.total > 0) {
@@ -100505,7 +100508,7 @@ async function run() {
             if (stepSummary) {
                 await lib_core.summary
                     .addHeading('SyncMyDep: CI Check Failed')
-                    .addRaw(`❌ **Desynchronization or security vulnerabilities detected in:** \`${changedFiles.join(', ')}\`\n\nRun SyncMyDep to automatically fix and sync your lockfiles.`)
+                    .addRaw(`❌ **Desynchronization or security vulnerabilities detected in:** \`${lockfileOrManifestChanges.join(', ')}\`\n\nRun SyncMyDep to automatically fix and sync your lockfiles.`)
                     .write();
             }
             lib_core.setFailed(`SyncMyDep Check-Only failed: lockfiles are desynchronized or vulnerabilities were detected.`);

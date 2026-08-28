@@ -303,7 +303,8 @@ export async function getGitStatus(workspaceDir: string): Promise<GitStatusResul
     if (!match) continue;
     const filePath = match[1].trim().replace(/^"|"$/g, '');
 
-    // Check relevant manifest & lockfiles
+    // Check relevant manifest, lockfiles, and README
+    const lower = filePath.toLowerCase();
     if (
       filePath.endsWith('package.json') ||
       filePath.endsWith('package-lock.json') ||
@@ -315,7 +316,8 @@ export async function getGitStatus(workspaceDir: string): Promise<GitStatusResul
       filePath.endsWith('bun.lockb') ||
       filePath.endsWith('deno.lock') ||
       filePath.endsWith('deno.json') ||
-      filePath.endsWith('deno.jsonc')
+      filePath.endsWith('deno.jsonc') ||
+      lower.endsWith('readme.md')
     ) {
       changedFiles.push(filePath);
     }
