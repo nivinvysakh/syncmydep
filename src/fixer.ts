@@ -10,6 +10,24 @@ import {
   DependencyDiff,
   BuildVerificationResult
 } from './types';
+import { parseSemVer } from './risk';
+
+/**
+ * Determines whether a dependency version was upgraded or downgraded.
+ */
+function determineVersionChangeType(oldV?: string, newV?: string): 'upgraded' | 'downgraded' | 'added' | 'removed' {
+  if (!oldV && newV) return 'added';
+  if (oldV && !newV) return 'removed';
+  if (!oldV || !newV) return 'upgraded';
+  const oldS = parseSemVer(oldV);
+  const newS = parseSemVer(newV);
+  if (oldS.valid && newS.valid) {
+    if (newS.major < oldS.major) return 'downgraded';
+    if (newS.major === oldS.major && newS.minor < oldS.minor) return 'downgraded';
+    if (newS.major === oldS.major && newS.minor === oldS.minor && newS.patch < oldS.patch) return 'downgraded';
+  }
+  return 'upgraded';
+}
 
 /**
  * Runs the appropriate command to synchronize the lockfile without running build scripts.
@@ -404,12 +422,13 @@ export async function parseDependencyDiffs(
         if (removedMap.has(pkg)) {
           const oldVer = removedMap.get(pkg)!;
           removedMap.delete(pkg);
+          const changeType = determineVersionChangeType(oldVer, newVer);
           diffs.push({
             name: pkg,
             type: 'prod',
             oldVersion: oldVer,
             newVersion: newVer,
-            changeType: 'upgraded',
+            changeType,
             reason: 'Direct Update'
           });
         } else {
@@ -498,13 +517,14 @@ export async function parseDependencyDiffs(
         if (currentPkg && oldVersion && newVersion && oldVersion !== newVersion) {
           if (!handledPackages.has(currentPkg)) {
             handledPackages.add(currentPkg);
+            const changeType = determineVersionChangeType(oldVersion, newVersion);
             diffs.push({
               name: currentPkg,
               type: 'transitive',
               oldVersion,
               newVersion,
-              changeType: 'upgraded',
-              reason: 'Lockfile Drift'
+              changeType,
+              reason: changeType === 'downgraded' ? 'Lockfile Reconciled' : 'Lockfile Drift'
             });
           }
           oldVersion = null;

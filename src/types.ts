@@ -28,7 +28,7 @@ export interface DependencyDiff {
   oldVersion?: string;
   newVersion?: string;
   changeType: 'added' | 'upgraded' | 'downgraded' | 'removed';
-  reason?: 'Direct Update' | 'Audit Fix' | 'Lockfile Drift' | 'Transitive Upgrade';
+  reason?: 'Direct Update' | 'Audit Fix' | 'Lockfile Drift' | 'Transitive Upgrade' | 'Lockfile Reconciled';
 }
 
 export interface VulnerabilityAdvisory {

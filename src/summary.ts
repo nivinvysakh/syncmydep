@@ -322,7 +322,8 @@ function buildDependencyDiffTable(diffs: DependencyDiff[]): string {
     let statusText: string = diff.reason || "Direct Update";
     if (diff.changeType === "added") statusText = "✨ Added";
     if (diff.changeType === "removed") statusText = "🗑️ Removed";
-    if (diff.reason === "Lockfile Drift") statusText = "🔒 Lockfile Drift";
+    if (diff.changeType === "downgraded") statusText = "🔒 Lockfile Reconciled";
+    else if (diff.reason === "Lockfile Drift") statusText = "🔒 Lockfile Drift";
     if (diff.reason === "Direct Update" && diff.changeType === "upgraded") statusText = "🔄 Direct Update";
     return "| `" + diff.name + "` | " + oldV + " | " + newV + " | " + statusText + " |\n";
   };

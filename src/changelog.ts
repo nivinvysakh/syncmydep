@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ChangelogSummary, DependencyDiff, PackageReleaseInfo } from './types';
+import { parseSemVer } from './risk';
 
 /**
  * Cleans and standardizes git and repository URLs to standard HTTPS web links.
@@ -80,7 +81,21 @@ export function generatePackageReleaseInfo(
     }
 
     if (cleanFrom && cleanTo && cleanFrom !== cleanTo) {
-      diffUrl = `${repoUrl}/compare/v${cleanFrom}...v${cleanTo}`;
+      const fromSem = parseSemVer(cleanFrom);
+      const toSem = parseSemVer(cleanTo);
+      let v1 = cleanFrom;
+      let v2 = cleanTo;
+      if (fromSem.valid && toSem.valid) {
+        if (
+          fromSem.major > toSem.major ||
+          (fromSem.major === toSem.major && fromSem.minor > toSem.minor) ||
+          (fromSem.major === toSem.major && fromSem.minor === toSem.minor && fromSem.patch > toSem.patch)
+        ) {
+          v1 = cleanTo;
+          v2 = cleanFrom;
+        }
+      }
+      diffUrl = `${repoUrl}/compare/v${v1}...v${v2}`;
     }
 
     changelogUrl = `${repoUrl}/releases`;

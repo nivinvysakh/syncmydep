@@ -97,6 +97,21 @@ export function evaluateVersionRisk(
     }
   }
 
+  const isDowngrade =
+    newSem.major < oldSem.major ||
+    (newSem.major === oldSem.major && newSem.minor < oldSem.minor) ||
+    (newSem.major === oldSem.major && newSem.minor === oldSem.minor && newSem.patch < oldSem.patch);
+
+  if (isDowngrade) {
+    return {
+      package: pkgName,
+      level: 'low',
+      reason: `Lockfile reconciliation / deduplication (reconciled v${oldSem.major}.${oldSem.minor}.${oldSem.patch} ➔ v${newSem.major}.${newSem.minor}.${newSem.patch}).`,
+      fromVersion: oldVersion,
+      toVersion: newVersion
+    };
+  }
+
   if (newSem.major > oldSem.major) {
     return {
       package: pkgName,
