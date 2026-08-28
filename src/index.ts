@@ -79,10 +79,47 @@ async function run(): Promise<void> {
     const branchName = core.getInput('pr-branch') || fileConfig.prBranch || 'syncmydep/dependency-fix';
     const prTitle = core.getInput('pr-title') || fileConfig.prTitle || 'chore(deps): synchronize package.json and lockfile issues';
     const commitMessage = core.getInput('commit-message') || fileConfig.commitMessage || 'chore(deps): synchronize package.json and lockfile issues';
-    const labelsInput = core.getInput('pr-labels') || (fileConfig.prLabels ? fileConfig.prLabels.join(',') : '') || 'dependencies, automated-pr, SyncMyDep';
-    const assigneesInput = core.getInput('pr-assignees') || (fileConfig.prAssignees ? fileConfig.prAssignees.join(',') : '');
-    const reviewersInput = core.getInput('pr-reviewers') || (fileConfig.prReviewers ? fileConfig.prReviewers.join(',') : '');
-    const ignorePackagesInput = core.getInput('ignore-packages') || (fileConfig.ignorePackages ? fileConfig.ignorePackages.join(',') : '');
+    
+    let labels: string[];
+    const cliLabelsInput = core.getInput('pr-labels');
+    if (cliLabelsInput !== '') {
+      labels = cliLabelsInput.split(',').map((s) => s.trim()).filter(Boolean);
+    } else if (fileConfig.prLabels !== undefined) {
+      labels = fileConfig.prLabels.map((s) => s.trim()).filter(Boolean);
+    } else {
+      labels = ['dependencies', 'automated-pr', 'SyncMyDep'];
+    }
+
+    let assignees: string[];
+    const cliAssigneesInput = core.getInput('pr-assignees');
+    if (cliAssigneesInput !== '') {
+      assignees = cliAssigneesInput.split(',').map((s) => s.trim()).filter(Boolean);
+    } else if (fileConfig.prAssignees !== undefined) {
+      assignees = fileConfig.prAssignees.map((s) => s.trim()).filter(Boolean);
+    } else {
+      assignees = [];
+    }
+
+    let reviewers: string[];
+    const cliReviewersInput = core.getInput('pr-reviewers');
+    if (cliReviewersInput !== '') {
+      reviewers = cliReviewersInput.split(',').map((s) => s.trim()).filter(Boolean);
+    } else if (fileConfig.prReviewers !== undefined) {
+      reviewers = fileConfig.prReviewers.map((s) => s.trim()).filter(Boolean);
+    } else {
+      reviewers = [];
+    }
+
+    let ignorePackages: string[];
+    const cliIgnoreInput = core.getInput('ignore-packages');
+    if (cliIgnoreInput !== '') {
+      ignorePackages = cliIgnoreInput.split(',').map((s) => s.trim()).filter(Boolean);
+    } else if (fileConfig.ignorePackages !== undefined) {
+      ignorePackages = fileConfig.ignorePackages.map((s) => s.trim()).filter(Boolean);
+    } else {
+      ignorePackages = [];
+    }
+
     const commentTrigger = (core.getInput('comment-trigger') || fileConfig.commentTrigger || 'syncdep').toLowerCase().trim();
     const requireOwner = core.getInput('require-owner') !== ''
       ? core.getBooleanInput('require-owner')
@@ -101,11 +138,6 @@ async function run(): Promise<void> {
     const cacheOption = core.getInput('cache') !== ''
       ? core.getBooleanInput('cache')
       : fileConfig.cache ?? true;
-
-    const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : ['dependencies', 'SyncMyDep'];
-    const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
-    const reviewers = reviewersInput ? reviewersInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
-    const ignorePackages = ignorePackagesInput ? ignorePackagesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
 
     core.info(`[SyncMyDep] Working directory: ${workspaceDir}`);
     if (ignorePackages.length > 0) {

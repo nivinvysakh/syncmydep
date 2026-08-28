@@ -99519,10 +99519,50 @@ async function run() {
         const branchName = lib_core.getInput('pr-branch') || fileConfig.prBranch || 'syncmydep/dependency-fix';
         const prTitle = lib_core.getInput('pr-title') || fileConfig.prTitle || 'chore(deps): synchronize package.json and lockfile issues';
         const commitMessage = lib_core.getInput('commit-message') || fileConfig.commitMessage || 'chore(deps): synchronize package.json and lockfile issues';
-        const labelsInput = lib_core.getInput('pr-labels') || (fileConfig.prLabels ? fileConfig.prLabels.join(',') : '') || 'dependencies, automated-pr, SyncMyDep';
-        const assigneesInput = lib_core.getInput('pr-assignees') || (fileConfig.prAssignees ? fileConfig.prAssignees.join(',') : '');
-        const reviewersInput = lib_core.getInput('pr-reviewers') || (fileConfig.prReviewers ? fileConfig.prReviewers.join(',') : '');
-        const ignorePackagesInput = lib_core.getInput('ignore-packages') || (fileConfig.ignorePackages ? fileConfig.ignorePackages.join(',') : '');
+        let labels;
+        const cliLabelsInput = lib_core.getInput('pr-labels');
+        if (cliLabelsInput !== '') {
+            labels = cliLabelsInput.split(',').map((s) => s.trim()).filter(Boolean);
+        }
+        else if (fileConfig.prLabels !== undefined) {
+            labels = fileConfig.prLabels.map((s) => s.trim()).filter(Boolean);
+        }
+        else {
+            labels = ['dependencies', 'automated-pr', 'SyncMyDep'];
+        }
+        let assignees;
+        const cliAssigneesInput = lib_core.getInput('pr-assignees');
+        if (cliAssigneesInput !== '') {
+            assignees = cliAssigneesInput.split(',').map((s) => s.trim()).filter(Boolean);
+        }
+        else if (fileConfig.prAssignees !== undefined) {
+            assignees = fileConfig.prAssignees.map((s) => s.trim()).filter(Boolean);
+        }
+        else {
+            assignees = [];
+        }
+        let reviewers;
+        const cliReviewersInput = lib_core.getInput('pr-reviewers');
+        if (cliReviewersInput !== '') {
+            reviewers = cliReviewersInput.split(',').map((s) => s.trim()).filter(Boolean);
+        }
+        else if (fileConfig.prReviewers !== undefined) {
+            reviewers = fileConfig.prReviewers.map((s) => s.trim()).filter(Boolean);
+        }
+        else {
+            reviewers = [];
+        }
+        let ignorePackages;
+        const cliIgnoreInput = lib_core.getInput('ignore-packages');
+        if (cliIgnoreInput !== '') {
+            ignorePackages = cliIgnoreInput.split(',').map((s) => s.trim()).filter(Boolean);
+        }
+        else if (fileConfig.ignorePackages !== undefined) {
+            ignorePackages = fileConfig.ignorePackages.map((s) => s.trim()).filter(Boolean);
+        }
+        else {
+            ignorePackages = [];
+        }
         const commentTrigger = (lib_core.getInput('comment-trigger') || fileConfig.commentTrigger || 'syncdep').toLowerCase().trim();
         const requireOwner = lib_core.getInput('require-owner') !== ''
             ? lib_core.getBooleanInput('require-owner')
@@ -99541,10 +99581,6 @@ async function run() {
         const cacheOption = lib_core.getInput('cache') !== ''
             ? lib_core.getBooleanInput('cache')
             : fileConfig.cache ?? true;
-        const labels = labelsInput ? labelsInput.split(',').map((s) => s.trim()).filter(Boolean) : ['dependencies', 'SyncMyDep'];
-        const assignees = assigneesInput ? assigneesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
-        const reviewers = reviewersInput ? reviewersInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
-        const ignorePackages = ignorePackagesInput ? ignorePackagesInput.split(',').map((s) => s.trim()).filter(Boolean) : [];
         lib_core.info(`[SyncMyDep] Working directory: ${workspaceDir}`);
         if (ignorePackages.length > 0) {
             lib_core.info(`[SyncMyDep] Package ignore filter active: ${ignorePackages.join(', ')}`);
