@@ -282,6 +282,7 @@ function buildRiskAssessmentSection(risk: RiskScoreResult): string {
 
 function buildChangelogSection(changelogs: ChangelogSummary[]): string {
   let md = "### 📖 Dependency Changelogs & Release Notes\n\n";
+  md += "<details>\n<summary>🔍 <b>View Full Changelogs & Release Notes (" + changelogs.length + " package" + (changelogs.length === 1 ? "" : "s") + ")</b> (Click to expand)</summary>\n\n";
   md += "| Package | Version Transition | Release Notes / Compare Diff |\n";
   md += "| :--- | :--- | :--- |\n";
 
@@ -294,7 +295,7 @@ function buildChangelogSection(changelogs: ChangelogSummary[]): string {
         : "—";
     md += "| `" + item.package + "` | " + vStr + " | " + (item.notesSummary || "—") + " |\n";
   }
-  md += "\n";
+  md += "\n</details>\n\n";
 
   return md;
 }
@@ -367,7 +368,15 @@ function buildGroupedDependencyTable(groups: DependencyGroup[]): string {
   let md = "### 📦 Grouped Package Updates\n\n";
 
   for (const group of groups) {
-    md += "#### " + group.name + " (" + group.diffs.length + " package" + (group.diffs.length === 1 ? "" : "s") + ")\n\n";
+    const shouldCollapse = group.diffs.length > 5 || group.name.toLowerCase().includes("general");
+    const countLabel = "(" + group.diffs.length + " package" + (group.diffs.length === 1 ? "" : "s") + ")";
+
+    if (shouldCollapse) {
+      md += "<details>\n<summary>📂 <b>" + group.name + " " + countLabel + "</b> (Click to expand)</summary>\n\n";
+    } else {
+      md += "#### " + group.name + " " + countLabel + "\n\n";
+    }
+
     md += "| Package | Old Version | New Version | Reason / Type |\n";
     md += "| :--- | :--- | :--- | :--- |\n";
     for (const diff of group.diffs) {
@@ -381,7 +390,12 @@ function buildGroupedDependencyTable(groups: DependencyGroup[]): string {
       if (diff.reason === "Direct Update" && diff.changeType === "upgraded") statusText = "🔄 Direct Update";
       md += "| `" + diff.name + "` | " + oldV + " | " + newV + " | " + statusText + " |\n";
     }
-    md += "\n";
+
+    if (shouldCollapse) {
+      md += "\n</details>\n\n";
+    } else {
+      md += "\n";
+    }
   }
 
   return md;
