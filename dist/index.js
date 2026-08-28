@@ -100460,6 +100460,25 @@ async function run() {
                 }
             }
         }
+        // Parse preliminary git changes to calculate risk & diffs for badges/summary
+        const preliminaryStatus = await getGitStatus(workspaceDir);
+        const dependencyDiffs = await parseDependencyDiffs(workspaceDir, preliminaryStatus.changedFiles);
+        const riskScore = riskScoringOption ? calculateRiskScore(dependencyDiffs) : undefined;
+        const changelogs = showChangelogsOption ? buildChangelogSummaries(workspaceDir, dependencyDiffs) : undefined;
+        const badgesResult = generateBadges({
+            status: preliminaryStatus.hasChanges ? 'fixed' : 'synced',
+            pm,
+            vulnCount: auditAfter?.total ?? auditBefore?.total ?? 0,
+            riskLevel: riskScore?.overallLevel || 'low',
+            repoUrl: github.context.repo.owner ? `https://github.com/${github.context.repo.owner}/${github.context.repo.repo}` : undefined
+        });
+        if (updateReadmeBadgeOption) {
+            lib_core.info('[SyncMyDep] 📊 Updating dynamic README status badges...');
+            const { updated, filePath } = updateReadmeBadges(workspaceDir, badgesResult.combinedMarkdown);
+            if (updated) {
+                lib_core.info(`[SyncMyDep] ✅ Status badges injected into ${filePath}`);
+            }
+        }
         const { hasChanges, changedFiles } = await getGitStatus(workspaceDir);
         // 6. Check-Only / CI Gating Mode
         if (checkOnly) {
@@ -100510,23 +100529,6 @@ async function run() {
         lib_core.setOutput('changes-detected', 'true');
         lib_core.setOutput('modified-files', changedFiles.join(','));
         const diffStat = await getGitDiffStat(workspaceDir, changedFiles);
-        const dependencyDiffs = await parseDependencyDiffs(workspaceDir, changedFiles);
-        const riskScore = riskScoringOption ? calculateRiskScore(dependencyDiffs) : undefined;
-        const changelogs = showChangelogsOption ? buildChangelogSummaries(workspaceDir, dependencyDiffs) : undefined;
-        const badgesResult = generateBadges({
-            status: 'fixed',
-            pm,
-            vulnCount: auditAfter?.total ?? auditBefore?.total ?? 0,
-            riskLevel: riskScore?.overallLevel || 'low',
-            repoUrl: github.context.repo.owner ? `https://github.com/${github.context.repo.owner}/${github.context.repo.repo}` : undefined
-        });
-        if (updateReadmeBadgeOption) {
-            const { updated, filePath } = updateReadmeBadges(workspaceDir, badgesResult.combinedMarkdown);
-            const relPath = external_path_.relative(workspaceDir, filePath);
-            if (updated && !changedFiles.includes(relPath)) {
-                changedFiles.push(relPath);
-            }
-        }
         const prBody = buildMarkdownSummary({
             pm,
             yarnVariant,
