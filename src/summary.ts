@@ -255,10 +255,11 @@ function formatAuditStatus(
 
 function buildRiskAssessmentSection(risk: RiskScoreResult): string {
   let md = "### 🛡️ Breaking Change Risk & Compatibility Analysis\n\n";
-  md += "**Overall Risk Level**: " + risk.badge + "\n";
+  md += "**Overall Risk Level**: " + risk.badge + "\n\n";
   md += "> " + risk.summary + "\n\n";
 
   if (risk.factors.length > 0) {
+    md += "<details>\n<summary>⚠️ <b>View Risk Factors & Compatibility Breakdown (" + risk.factors.length + " package" + (risk.factors.length === 1 ? "" : "s") + ")</b> (Click to expand)</summary>\n\n";
     md += "| Package | Risk Level | Version Change | Reason |\n";
     md += "| :--- | :--- | :--- | :--- |\n";
     for (const factor of risk.factors) {
@@ -274,7 +275,7 @@ function buildRiskAssessmentSection(risk: RiskScoreResult): string {
           : "—";
       md += "| `" + factor.package + "` | " + levelBadge + " | " + changeStr + " | " + factor.reason + " |\n";
     }
-    md += "\n";
+    md += "\n</details>\n\n";
   }
 
   return md;
