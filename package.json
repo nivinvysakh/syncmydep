@@ -35,7 +35,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^26.5.1",
     "@vercel/ncc": "^0.38.3",
-    "eslint": "^10.9.1",
+    "eslint": "^10.10.0",
     "jest": "^30.5.1",
     "jest-util": "^30.4.1",
     "ts-jest": "^29.4.12",
